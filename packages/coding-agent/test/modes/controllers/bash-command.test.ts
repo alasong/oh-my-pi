@@ -107,7 +107,7 @@ describe("bash shortcut command", () => {
 		});
 	});
 
-	it("persists standalone and bare cd before the next user-shell command", async () => {
+	it("runs cd in the persistent shell without migrating the project directory", async () => {
 		const sourceDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-bash-cd-source-"));
 		const childDir = path.join(sourceDir, "child");
 		await fs.mkdir(childDir);
@@ -148,7 +148,7 @@ describe("bash shortcut command", () => {
 			await controller.handleBashCommand("pwd");
 
 			expect(state.cwd).toBe(sourceDir);
-			expect(state.executedCwds).toEqual([sourceDir, childDir, sourceDir]);
+			expect(state.executedCwds).toEqual([sourceDir, sourceDir, sourceDir]);
 			expect(executeBash).toHaveBeenCalledTimes(3);
 			expect(executeBash).toHaveBeenNthCalledWith(1, "cd child", expect.any(Function), {
 				excludeFromContext: false,
@@ -158,10 +158,9 @@ describe("bash shortcut command", () => {
 				excludeFromContext: false,
 				useUserShell: true,
 			});
-			expect(ctx.applyCwdChange).toHaveBeenNthCalledWith(1, childDir);
-			expect(ctx.applyCwdChange).toHaveBeenNthCalledWith(2, sourceDir);
-			expect(ctx.updateEditorBorderColor).toHaveBeenCalledTimes(2);
-			expect(ctx.reloadTodos).toHaveBeenCalledTimes(2);
+			expect(ctx.applyCwdChange).not.toHaveBeenCalled();
+			expect(ctx.updateEditorBorderColor).not.toHaveBeenCalled();
+			expect(ctx.reloadTodos).not.toHaveBeenCalled();
 			expect(ctx.showError).not.toHaveBeenCalled();
 		} finally {
 			await fs.rm(sourceDir, { recursive: true, force: true });
@@ -255,7 +254,7 @@ describe("bash shortcut command", () => {
 		}
 	});
 
-	it("finalizes successful output before reporting a standalone cd refresh failure", async () => {
+	it("does not migrate the project directory on a standalone cd", async () => {
 		const sourceDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-bash-cwd-refresh-error-"));
 		const childDir = path.join(sourceDir, "child");
 		await fs.mkdir(childDir);
@@ -272,9 +271,6 @@ describe("bash shortcut command", () => {
 				outputBytes: 12,
 				workingDir: childDir,
 			}));
-			ctx.applyCwdChange = vi.fn(async () => {
-				throw new Error("refresh failed");
-			});
 			const controller = new CommandController(ctx);
 
 			await controller.handleBashCommand("cd child");
@@ -282,8 +278,11 @@ describe("bash shortcut command", () => {
 			const component = present.mock.calls[0]?.[0];
 			expect(component).toBeInstanceOf(BashExecutionComponent);
 			expect((component as BashExecutionComponent).getOutput()).toContain("final output");
-			expect(state.cwd).toBe(childDir);
-			expect(ctx.showError).toHaveBeenCalledWith(expect.stringContaining("completed, but"));
+			expect(state.cwd).toBe(sourceDir);
+			expect(ctx.applyCwdChange).not.toHaveBeenCalled();
+			expect(ctx.updateEditorBorderColor).not.toHaveBeenCalled();
+			expect(ctx.reloadTodos).not.toHaveBeenCalled();
+			expect(ctx.showError).not.toHaveBeenCalled();
 		} finally {
 			await fs.rm(sourceDir, { recursive: true, force: true });
 		}
