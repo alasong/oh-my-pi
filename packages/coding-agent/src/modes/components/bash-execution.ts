@@ -14,6 +14,7 @@ import {
 	visibleWidth,
 } from "@oh-my-pi/pi-tui";
 import { sanitizeText } from "@oh-my-pi/pi-utils";
+import { isSettingsInitialized, settings } from "../../config/settings";
 import { theme } from "../../modes/theme/theme";
 import type { TruncationMeta } from "../../tools/output-meta";
 import { getSixelLineMask, isSixelPassthroughEnabled, sanitizeWithOptionalSixelPassthrough } from "../../utils/sixel";
@@ -47,6 +48,12 @@ export class BashExecutionComponent extends Container {
 	#blockVersion = 0;
 	#displayDirty = false;
 	#chunkGate = false;
+	// Line-based display (bash.lineDisplay): hold back the incomplete trailing
+	// line and only flush complete lines, so output appears line-by-line rather
+	// than character-by-character. Off by default; the AI's streaming reply is
+	// a separate component and is unaffected.
+	#lineMode = false;
+	#pendingLine = "";
 	#contentContainer: Container;
 	#headerText: Text;
 
@@ -56,6 +63,10 @@ export class BashExecutionComponent extends Container {
 		excludeFromContext = false,
 	) {
 		super();
+		// Default to char-by-char streaming when settings aren't initialized
+		// (e.g. isolated component tests); in real use settings is initialized
+		// and `bash.lineDisplay` reflects the user's opt-in.
+		this.#lineMode = isSettingsInitialized() && settings.get("bash.lineDisplay") === true;
 
 		// Use dim border for excluded-from-context commands (!! prefix)
 		const colorKey = excludeFromContext ? "dim" : "bashMode";
@@ -108,23 +119,47 @@ export class BashExecutionComponent extends Container {
 			this.#chunkGate = false;
 		}, CHUNK_THROTTLE_MS);
 
-		const incomingLines = chunk.split("\n");
-		if (this.#outputLines.length > 0 && incomingLines.length > 0) {
-			const lastIndex = this.#outputLines.length - 1;
-			const mergedLines = [`${this.#outputLines[lastIndex]}${incomingLines[0]}`, ...incomingLines.slice(1)];
-			const clampedMergedLines = this.#clampLinesPreservingSixel(mergedLines);
-			this.#outputLines[lastIndex] = clampedMergedLines[0] ?? "";
-			this.#outputLines.push(...clampedMergedLines.slice(1));
+		if (this.#lineMode) {
+			this.#appendOutputLineMode(chunk);
 		} else {
-			this.#outputLines.push(...this.#clampLinesPreservingSixel(incomingLines));
-		}
+			const incomingLines = chunk.split("\n");
+			if (this.#outputLines.length > 0 && incomingLines.length > 0) {
+				const lastIndex = this.#outputLines.length - 1;
+				const mergedLines = [`${this.#outputLines[lastIndex]}${incomingLines[0]}`, ...incomingLines.slice(1)];
+				const clampedMergedLines = this.#clampLinesPreservingSixel(mergedLines);
+				this.#outputLines[lastIndex] = clampedMergedLines[0] ?? "";
+				this.#outputLines.push(...clampedMergedLines.slice(1));
+			} else {
+				this.#outputLines.push(...this.#clampLinesPreservingSixel(incomingLines));
+			}
 
-		// Cap stored lines during streaming to avoid unbounded memory growth
-		if (this.#outputLines.length > STREAMING_LINE_CAP) {
-			this.#outputLines = this.#outputLines.slice(-STREAMING_LINE_CAP);
+			// Cap stored lines during streaming to avoid unbounded memory growth
+			if (this.#outputLines.length > STREAMING_LINE_CAP) {
+				this.#outputLines = this.#outputLines.slice(-STREAMING_LINE_CAP);
+			}
 		}
 
 		this.#displayDirty = true;
+	}
+
+	/**
+	 * Line-based append: prepend the buffered incomplete line, split the whole
+	 * chunk, flush only complete lines, and hold the trailing partial line until
+	 * a newline arrives (or the command completes). Line-splitting across chunk
+	 * boundaries is handled by the `#pendingLine` carry-over.
+	 */
+	#appendOutputLineMode(chunk: string): void {
+		const parts = `${this.#pendingLine}${chunk}`.split("\n");
+		// Every element but the last is a complete line; the last is the trailing
+		// partial (empty when the input ended in a newline).
+		const completeLines = parts.slice(0, -1);
+		if (completeLines.length > 0) {
+			this.#outputLines.push(...this.#clampLinesPreservingSixel(completeLines));
+			if (this.#outputLines.length > STREAMING_LINE_CAP) {
+				this.#outputLines = this.#outputLines.slice(-STREAMING_LINE_CAP);
+			}
+		}
+		this.#pendingLine = parts[parts.length - 1] ?? "";
 	}
 
 	setComplete(
@@ -135,6 +170,16 @@ export class BashExecutionComponent extends Container {
 		this.#exitCode = exitCode;
 		this.#status = resolveExecutionStatus(exitCode, cancelled);
 		this.#truncation = options?.truncation;
+		// Line mode: flush any buffered incomplete line as a final line. When
+		// `output` is provided below, `#setOutput` replaces the whole buffer
+		// anyway, so this only matters for the no-output completion path.
+		if (this.#lineMode && this.#pendingLine !== "") {
+			this.#outputLines.push(...this.#clampLinesPreservingSixel([this.#pendingLine]));
+			this.#pendingLine = "";
+			if (this.#outputLines.length > STREAMING_LINE_CAP) {
+				this.#outputLines = this.#outputLines.slice(-STREAMING_LINE_CAP);
+			}
+		}
 		if (options?.output !== undefined) {
 			this.#setOutput(options.output);
 		}
