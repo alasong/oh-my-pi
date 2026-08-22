@@ -60,6 +60,45 @@ project root: omp.assets.json
   └─ freshness: per-asset refreshPolicy + anchor
 ```
 
+### Alignment rules
+
+Assets describe the same project from different angles; when they disagree,
+the framework needs a deterministic way to know which side is truth. The rule
+distinguishes **constraint assets** from **description assets**:
+
+| Role | Asset types | Direction |
+| ---- | ----------- | --------- |
+| **Constraint** (truth) | `archGuard`, `qualityGuard` | code must obey |
+| **Fact** (truth) | `code` | source of what exists |
+| **Description** (derived) | `archDoc`, `test` | follows the fact |
+
+**Priority chain:** `archGuard` > `code` > `archDoc`/`test`.
+
+- **Constraint vs code** — code loses. An invariant declares how the system
+  must be; code that violates it is wrong and is rejected at the guard.
+- **Code vs description** — code wins. `archDoc` and `test` describe or verify
+  what exists; when code evolves, the description must be updated to match.
+- **Test vs code** — code wins. A failing or stale test is updated to reflect
+  current behavior.
+
+**"Architecture first" has a precise boundary.** It holds only for the
+*constraint* dimension (`archGuard`): invariants override code. It does *not*
+hold for the *description* dimension (`archDoc`): a doc that drifted from the
+code is updated, not enforced. Confusing "constraining architecture" (enforced)
+with "describing architecture" (follows code) is the framework's main footgun.
+
+**Alignment is bidirectional, at different times:**
+
+- **Code changes** → re-validate constraints (pre-commit guard, already wired
+  via `git-hooks.ts`) and flag description drift (pre-commit / CI check that
+  `archDoc` still matches code).
+- **Constraint changes** → force code migration to the new invariant.
+- **Description changes** → trigger a doc-vs-code consistency check.
+
+Alignment checks hook into the same lifecycle as guarding: constraint checks
+at pre-commit, description-drift checks at pre-commit or CI, freshness at
+post-commit.
+
 ## Three layers
 
 ### Injection

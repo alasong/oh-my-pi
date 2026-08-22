@@ -46,6 +46,18 @@ describe("buildPreCommitScript", () => {
 		const run = Bun.spawnSync(["sh", "-c", script]);
 		expect(run.exitCode).toBe(0);
 	});
+
+	test("embeds the drift check when includeDriftCheck is set", () => {
+		const script = buildPreCommitScript(["true"], { includeDriftCheck: true });
+		expect(script).toContain("omp asset check-drift --warn-only");
+		expect(script).toContain("description drift");
+		expect(script).toContain("|| true"); // warning-only, never blocks commit
+	});
+
+	test("omits the drift check by default", () => {
+		const script = buildPreCommitScript(["true"]);
+		expect(script).not.toContain("omp asset check-drift");
+	});
 });
 
 describe("buildPostCommitScript", () => {
