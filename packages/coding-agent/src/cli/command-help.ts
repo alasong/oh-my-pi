@@ -62,7 +62,7 @@ export const imagesHelp = {
 } satisfies CommandMetadata;
 
 export const assetHelp = {
-	description: "Manage project asset anchors (install/uninstall guard git hooks)",
+	description: "Manage project asset anchors (init, install/uninstall guard git hooks, check-drift)",
 } satisfies CommandMetadata;
 
 export const installHelp = {

@@ -1,5 +1,11 @@
 /**
- * `omp asset install-hooks` — install asset guard git hooks.
+ * `omp asset` — manage project asset anchors.
+ *
+ * Actions:
+ *   init           one-command bootstrap (index + manifest + hooks)
+ *   install-hooks  install git guard hooks from omp.assets.json
+ *   uninstall-hooks  remove hooks this tool wrote
+ *   check-drift    detect archDoc references to vanished code symbols
  *
  * Reads the project's `omp.assets.json`, collects the declared guards
  * (`guard.trigger = "pre-write"`), and writes `.git/hooks/pre-commit`
@@ -12,6 +18,7 @@ import { Args, Command, Flags } from "@oh-my-pi/pi-utils/cli";
 import { runDriftCheck } from "../asset-anchors/drift-check";
 import { installGitHooks, uninstallGitHooks } from "../asset-anchors/git-hooks";
 import { loadAssetManifest } from "../asset-anchors/index";
+import { runAssetInit } from "../asset-anchors/init";
 import { assetHelp as commandHelp } from "../cli/command-help";
 
 export default class Asset extends Command {
@@ -19,7 +26,7 @@ export default class Asset extends Command {
 
 	static args = {
 		action: Args.string({
-			description: 'Action: "install-hooks", "uninstall-hooks", or "check-drift"',
+			description: 'Action: "init", "install-hooks", "uninstall-hooks", or "check-drift"',
 			required: true,
 		}),
 	};
@@ -38,6 +45,25 @@ export default class Asset extends Command {
 		const { action } = this.args;
 		const { "dry-run": dryRun, "with-drift-check": withDriftCheck, "warn-only": warnOnly } = this.flags;
 		const projectRoot = getProjectDir();
+
+		if (action === "init") {
+			if (dryRun) {
+				console.log("Would: build code graph index, write omp.assets.json (if absent), install guard hooks");
+				return;
+			}
+			const result = await runAssetInit(projectRoot, { includeDriftCheck: withDriftCheck });
+			for (const w of result.warnings) console.warn(`  ⚠ ${w}`);
+			console.log(result.indexBuilt ? "✓ Built code graph index" : "  Code graph index already present (skipped)");
+			console.log(
+				result.manifestWritten ? "✓ Wrote omp.assets.json" : "  omp.assets.json already exists (left unchanged)",
+			);
+			console.log(
+				result.hooksInstalled.length > 0
+					? `✓ Installed guard hooks: ${result.hooksInstalled.join(", ")}`
+					: "  Guard hooks already installed",
+			);
+			return;
+		}
 
 		if (action === "install-hooks") {
 			const manifest = await loadAssetManifest(projectRoot);

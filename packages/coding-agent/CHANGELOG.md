@@ -18,6 +18,7 @@
 - Added `omp asset install-hooks` / `omp asset uninstall-hooks`: derive git guard hooks (pre-commit architecture/quality checks + post-commit codegraph refresh) from `omp.assets.json`, preserving user hooks
 - Added `omp asset check-drift`: detect architecture-doc references to code symbols that no longer exist in the code graph
 - `omp asset install-hooks --with-drift-check` also runs the description-drift check in pre-commit; reinstall now updates hooks when options change (content-aware idempotency)
+- Added `omp asset init`: one-command project bootstrap — build code graph index, write a default `omp.assets.json`, and install guard hooks
 
 - Added independently configurable macOS typo detection (`Ctrl+.` suggestions), word autocomplete (Tab), and autocorrect in the prompt editor. Typo detection and autocomplete default on; autocorrect is opt-in.
 - Startup composer now renders welcome, theme, and status UI immediately using cached session/LSP info
