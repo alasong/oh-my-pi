@@ -1,0 +1,25 @@
+{
+	"schemaVersion": 1,
+	"assets": [
+		{
+			"id": "code-graph",
+			"type": "code",
+			"path": ".codegraph",
+			"refreshPolicy": "watch",
+			"guard": {
+				"command": "test -f .codegraph/codegraph.db",
+				"trigger": "pre-write"
+			}
+		},
+		{
+			"id": "architecture-docs",
+			"type": "archDoc",
+			"path": "docs",
+			"refreshPolicy": "scheduled",
+			"guard": {
+				"command": "test -f docs/approval-mode.md && test -f docs/project-asset-anchors.md",
+				"trigger": "pre-write"
+			}
+		}
+	]
+}

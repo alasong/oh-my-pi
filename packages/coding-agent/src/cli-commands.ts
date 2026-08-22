@@ -113,6 +113,11 @@ export const commands: CommandEntry[] = [
 		help: commandHelp.imagesHelp,
 	},
 	{
+		name: "asset",
+		load: () => import("./commands/asset").then(m => m.default),
+		help: commandHelp.assetHelp,
+	},
+	{
 		name: "install",
 		load: () => import("./commands/install").then(m => m.default),
 		help: commandHelp.installHelp,

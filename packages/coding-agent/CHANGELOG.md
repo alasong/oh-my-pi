@@ -13,6 +13,29 @@
 - Added icon support and usage-frequency ranking to slash-command autocomplete suggestions.
 - Enhanced the edit tool to support `＋`-prefixed line insertions, unified diff formats, bare selection replacements, and robust recovery for common syntax variations and ambiguous match spans.
 - Startup composer now renders immediately using cached session and theme data, allowing typing before session initialization finishes without dropping keystrokes.
+- Added `asset-anchors` module: declarative `omp.assets.json` manifest parsing and a runtime asset registry (code/archDoc/test/guards/memory/context), the first slice of the project asset anchor framework
+- Registered asset anchors as an omp capability (`assets`) with a manifest provider, so project assets load through `loadCapability("assets")`
+- Added `omp asset install-hooks` / `omp asset uninstall-hooks`: derive git guard hooks (pre-commit architecture/quality checks + post-commit codegraph refresh) from `omp.assets.json`, preserving user hooks
+
+- Added independently configurable macOS typo detection (`Ctrl+.` suggestions), word autocomplete (Tab), and autocorrect in the prompt editor. Typo detection and autocomplete default on; autocorrect is opt-in.
+- Startup composer now renders welcome, theme, and status UI immediately using cached session/LSP info
+- `omp bench` now runs a mixed suite of randomized built-in challenges by default (chat, prefill, generation); `--profile` isolates one kind
+- Added p50/p95 statistics, distinct input/output throughput metrics, and cost to benchmark output
+- Added live benchmark dashboard with progress tracking and real-time performance estimates
+- Added `--prefill-bytes` to configure synthetic input sizes for prefill benchmarks
+- Added `/shake thinking` to remove model reasoning blocks from session history
+- Added icon support to slash command autocomplete, with unique visuals for actions, files, settings, and other command types
+- Slash-command autocomplete now ranks equally matching commands by how often you use them; usage counts persist across sessions in agent.db
+- Edit tool payloads now accept `＋`-prefixed add lines to insert whole lines in place (consecutive `＋` lines insert together, both marker indent styles supported), and the prompt documents multi-line inline selections for contained restructures.
+- Edit tool now recovers common payload dialect slips instead of erroring: selections trailing their retyped line, elided unchanged lines in inline operations, guillemets used as brackets around old/new blocks, a stray trailing rewrite separator, rewrites written as replacement-directive lists, and apply-patch sentinels mixed into payloads.
+- Edit tool now defers ambiguous operations and resolves them against sibling operations' claimed spans, merges a pure deletion with a contained sibling rewrite into one union replace, reads a bare *** line as the rewrite separator, and strips split envelope sentinels plus decoding noise between an End sentinel and the next Begin.
+- Edit tool moves are now taught as delete-plus-restate; the register re-emit idiom left the prompt and constrained-decoding grammar (the engine still applies it), after benchmarks showed models inventing conflicting semantics for it.
+- Edit tool now reads a bare selection in a rewrite-less operation as the desired text: the current span is captured in place and replaced, keeping boundary whitespace outside the replacement.
+- Added an experimental `mono` edit variant: header-less `§relative/path` operation openers (bare `§` continues in the same file), inline-only changes, a real transpiler front-end, and dialect-voiced errors so retry guidance is always expressible under the mono grammar. Benchmarks with the corrected error surface still favor keeping the block form.
+- Edit tool now accepts the pretrained diff schema wherever models emit it: unified-diff-shaped operations (`@@` hunks, `-`/`+` runs, context lines) apply as inline changes, an added line that is a near-variant of its anchor replaces it instead of duplicating it.
+- Added an experimental `wdiff` edit variant speaking git word-diff (`@@ path` operation headers, `[-old-]{+new+}` inline changes, line-diff runs, `...` skips); benchmarks show block-instinct models roughly double their first-try edit success on it versus the inline-only mono dialect.
+- Edit tool now collapses back-to-back duplicate blocks when a payload states the desired text once, drops overlapping fuzzy-match artifacts of the same operation, and removes a dangling blank line left directly above a closing delimiter after a block deletion.
+- Edit tool now resolves delimiter-garbled punctuation selections against the file, rejects matches that would rewrite part of a longer punctuation run, treats candidates with whitespace-equivalent outcomes as unambiguous, recovers a dropped seam between a selection and its following text, and cleans blank lines left beside opening or closing delimiters after deletions.
 
 ### Changed
 

@@ -61,6 +61,10 @@ export const imagesHelp = {
 	description: "Inspect, diagnose, probe, and purge image publication backends",
 } satisfies CommandMetadata;
 
+export const assetHelp = {
+	description: "Manage project asset anchors (install/uninstall guard git hooks)",
+} satisfies CommandMetadata;
+
 export const installHelp = {
 	description: "Install or link an extension package (alias of `plugin install`/`plugin link`)",
 } satisfies CommandMetadata;

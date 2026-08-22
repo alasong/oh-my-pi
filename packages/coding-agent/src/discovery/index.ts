@@ -5,6 +5,7 @@
  * Import this module to ensure all providers are registered with the capability registry.
  */
 // Import capability definitions (ensures capabilities are defined before providers register)
+import "../capability/asset";
 import "../capability/context-file";
 import "../capability/extension";
 import "../capability/extension-module";
@@ -22,6 +23,7 @@ import "../capability/tool";
 // Import providers (each registers itself on import)
 import "./agent-plugins";
 import "./agents-md";
+import "./asset-manifest";
 import "./builtin";
 import "./builtin-defaults";
 import "./claude";
@@ -63,6 +65,7 @@ export {
 	reset,
 	setDisabledProviders,
 } from "../capability";
+export type { AssetItem } from "../capability/asset";
 export type { ContextFile } from "../capability/context-file";
 export type { Extension, ExtensionManifest } from "../capability/extension";
 export type { ExtensionModule } from "../capability/extension-module";
