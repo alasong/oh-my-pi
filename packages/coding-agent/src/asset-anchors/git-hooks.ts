@@ -128,7 +128,7 @@ function writeHook(hooksDir: string, name: string, content: string): boolean {
 	// Preserve any user-written prefix before our marker. Drop the tool's own
 	// shebang that precedes the marker (it belongs to the generated block).
 	let userPrefix = existing ?? "";
-	if (existing !== null && existing.includes(HOOK_MARKER)) {
+	if (existing?.includes(HOOK_MARKER)) {
 		userPrefix = existing.slice(0, existing.indexOf(HOOK_MARKER));
 		userPrefix = userPrefix.replace(/\n*#!.*\n?$/, "").trimEnd();
 	}
