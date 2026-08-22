@@ -56,6 +56,7 @@ export class BashExecutionComponent extends Container {
 	#pendingLine = "";
 	#contentContainer: Container;
 	#headerText: Text;
+	#ui: TUI;
 
 	constructor(
 		private readonly command: string,
@@ -63,6 +64,7 @@ export class BashExecutionComponent extends Container {
 		excludeFromContext = false,
 	) {
 		super();
+		this.#ui = ui;
 		// Default to char-by-char streaming when settings aren't initialized
 		// (e.g. isolated component tests); in real use settings is initialized
 		// and `bash.lineDisplay` reflects the user's opt-in.
@@ -140,6 +142,7 @@ export class BashExecutionComponent extends Container {
 		}
 
 		this.#displayDirty = true;
+		this.#ui.requestRender();
 	}
 
 	/**

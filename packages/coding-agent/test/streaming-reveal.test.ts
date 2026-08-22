@@ -5,10 +5,13 @@ import {
 	BlockUnitCounter,
 	buildDisplayMessage,
 	CATCHUP_FRAMES,
+	LINE_TAIL_TIMEOUT_MS,
+	LineUnitCounter,
 	MIN_STEP,
 	nextStep,
 	STREAMING_REVEAL_FRAME_MS,
 	StreamingRevealController,
+	visibleLineUnits,
 	visibleUnits,
 } from "@oh-my-pi/pi-coding-agent/modes/controllers/streaming-reveal";
 import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
@@ -84,11 +87,18 @@ function latestMessage(component: RecordingComponent): AssistantMessage {
 }
 
 function makeController(
-	options: { smooth?: boolean; hideThinking?: boolean; proseOnly?: () => boolean; requestRender?: () => void } = {},
+	options: {
+		smooth?: boolean;
+		hideThinking?: boolean;
+		proseOnly?: () => boolean;
+		line?: boolean;
+		requestRender?: () => void;
+	} = {},
 ) {
 	const component = new RecordingComponent();
 	const controller = new StreamingRevealController({
 		getSmoothStreaming: () => options.smooth ?? true,
+		getLineDisplay: () => options.line ?? false,
 		getHideThinkingBlock: () => options.hideThinking ?? false,
 		getProseOnlyThinking: options.proseOnly ?? (() => true),
 		requestRender: options.requestRender ?? (() => {}),
@@ -420,5 +430,62 @@ describe("BlockUnitCounter.slice", () => {
 			if (revealed < 0) revealed = 0;
 			expect(counter.slice(0, text, revealed)).toBe(refSlice(text, revealed));
 		}
+	});
+});
+
+describe("line display reveal", () => {
+	it("counts complete lines only, excluding a trailing partial line", () => {
+		expect(visibleLineUnits(makeMessage([{ type: "text", text: "a\nb\n" }]), false)).toBe(2);
+		expect(visibleLineUnits(makeMessage([{ type: "text", text: "a\nb" }]), false)).toBe(1);
+		expect(visibleLineUnits(makeMessage([{ type: "text", text: "" }]), false)).toBe(0);
+	});
+
+	it("slices to complete lines and includes the tail when units exceed", () => {
+		const counter = new LineUnitCounter();
+		const text = "line1\nline2\npartial";
+		expect(counter.slice(0, text, 1)).toBe("line1\n");
+		expect(counter.slice(0, text, 2)).toBe("line1\nline2\n");
+		// One unit more than the complete-line count flushes the tail.
+		expect(counter.slice(0, text, 3)).toBe(text);
+	});
+
+	it("reveals one complete line per tick, then flushes a stalled tail", () => {
+		vi.useFakeTimers();
+		const { component, controller } = makeController({ line: true });
+		controller.begin(component, makeMessage([{ type: "text", text: "alpha\nbeta\n" }]));
+
+		// First tick reveals the first complete line only.
+		vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS);
+		expect(textAt(latestMessage(component), 0)).toBe("alpha\n");
+
+		// Second tick reveals the second complete line.
+		vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS);
+		expect(textAt(latestMessage(component), 0)).toBe("alpha\nbeta\n");
+	});
+
+	it("flushes an incomplete trailing line after the tail timeout", () => {
+		vi.useFakeTimers();
+		const { component, controller } = makeController({ line: true });
+		controller.begin(component, makeMessage([{ type: "text", text: "done\npartial" }]));
+
+		// First tick reveals the complete line.
+		vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS);
+		expect(textAt(latestMessage(component), 0)).toBe("done\n");
+
+		// The trailing partial line appears after LINE_TAIL_TIMEOUT_MS.
+		vi.advanceTimersByTime(LINE_TAIL_TIMEOUT_MS + 10);
+		expect(textAt(latestMessage(component), 0)).toBe("done\npartial");
+	});
+
+	it("does not hold back a fully newline-terminated message", () => {
+		vi.useFakeTimers();
+		const { component, controller } = makeController({ line: true });
+		controller.begin(component, makeMessage([{ type: "text", text: "alpha\nbeta\n" }]));
+		vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS);
+		vi.advanceTimersByTime(STREAMING_REVEAL_FRAME_MS);
+		// No trailing partial line: reveal completes at the complete-line count.
+		expect(textAt(latestMessage(component), 0)).toBe("alpha\nbeta\n");
+		// begin renders the empty frame, then two ticks reveal each line.
+		expect(component.messages.length).toBe(3);
 	});
 });
