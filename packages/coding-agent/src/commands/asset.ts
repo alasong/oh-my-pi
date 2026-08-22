@@ -42,8 +42,9 @@ export default class Asset extends Command {
 	};
 
 	async run(): Promise<void> {
-		const { action } = this.args;
-		const { "dry-run": dryRun, "with-drift-check": withDriftCheck, "warn-only": warnOnly } = this.flags;
+		const { args, flags } = await this.parse(Asset);
+		const { action } = args;
+		const { "dry-run": dryRun, "with-drift-check": withDriftCheck, "warn-only": warnOnly } = flags;
 		const projectRoot = getProjectDir();
 
 		if (action === "init") {
