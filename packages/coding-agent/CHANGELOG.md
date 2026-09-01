@@ -4,6 +4,13 @@
 
 ### Added
 
+- Added `asset-anchors` module: declarative `omp.assets.json` manifest parsing and a runtime asset registry (code/archDoc/test/guards/memory/context), the first slice of the project asset anchor framework
+- Registered asset anchors as an omp capability (`assets`) with a manifest provider, so project assets load through `loadCapability("assets")`
+- Added `omp asset install-hooks` / `omp asset uninstall-hooks`: derive git guard hooks (pre-commit architecture/quality checks + post-commit codegraph refresh) from `omp.assets.json`, preserving user hooks
+- Added `omp asset check-drift`: detect architecture-doc references to code symbols that no longer exist in the code graph
+- `omp asset install-hooks --with-drift-check` also runs the description-drift check in pre-commit; reinstall now updates hooks when options change (content-aware idempotency)
+- Added `omp asset init`: one-command project bootstrap — build code graph index, write a default `omp.assets.json`, and install guard hooks
+- Added `bash.lineDisplay` setting: display bash command streaming output line by line instead of character by character; an incomplete trailing line is held back until a newline or command completion, and assistant replies reveal one complete line at a time
 - Added `injectV1: false` option to `openai-models-list` discovery to fetch the model list from `{baseUrl}/models` without injecting `/v1`, for gateways that root their OpenAI-compatible surface at a versioned URL (e.g. `https://api.opper.ai/v3/compat`) where the `/v1`-injected endpoint returns only a small subset.
 - Added provider-reported credits and concrete routed-model counts to `/session` statistics ([#8590](https://github.com/can1357/oh-my-pi/pull/8590) by [@will-bogusz](https://github.com/will-bogusz)).
 - Added `CLINE_API_KEY` to the CLI environment help for native ClinePass subscription inference ([#7863](https://github.com/can1357/oh-my-pi/pull/7863) by [@will-bogusz](https://github.com/will-bogusz)).
@@ -20,6 +27,7 @@
 
 ### Fixed
 
+- Fixed `!cd` in the persistent shell migrating the omp project directory to the cd target: `!cd` now only changes the persistent shell's own cwd (for subsequent `!` commands) unless the new `bash.cdFollowsShell` setting is enabled
 - Fixed an issue where custom model overrides were lost during configuration updates
 - Fixed "Please use nerdfont" notification incorrectly persisting after theme configuration
 - Fixed sampling parameter errors for newer Anthropic models (Opus 4.7+, Sonnet 5+)
@@ -493,32 +501,6 @@
 - Added icon support and usage-frequency ranking to slash-command autocomplete suggestions.
 - Enhanced the edit tool to support `＋`-prefixed line insertions, unified diff formats, bare selection replacements, and robust recovery for common syntax variations and ambiguous match spans.
 - Startup composer now renders immediately using cached session and theme data, allowing typing before session initialization finishes without dropping keystrokes.
-- Added `asset-anchors` module: declarative `omp.assets.json` manifest parsing and a runtime asset registry (code/archDoc/test/guards/memory/context), the first slice of the project asset anchor framework
-- Registered asset anchors as an omp capability (`assets`) with a manifest provider, so project assets load through `loadCapability("assets")`
-- Added `omp asset install-hooks` / `omp asset uninstall-hooks`: derive git guard hooks (pre-commit architecture/quality checks + post-commit codegraph refresh) from `omp.assets.json`, preserving user hooks
-- Added `omp asset check-drift`: detect architecture-doc references to code symbols that no longer exist in the code graph
-- `omp asset install-hooks --with-drift-check` also runs the description-drift check in pre-commit; reinstall now updates hooks when options change (content-aware idempotency)
-- Added `omp asset init`: one-command project bootstrap — build code graph index, write a default `omp.assets.json`, and install guard hooks
-
-- Added independently configurable macOS typo detection (`Ctrl+.` suggestions), word autocomplete (Tab), and autocorrect in the prompt editor. Typo detection and autocomplete default on; autocorrect is opt-in.
-- Startup composer now renders welcome, theme, and status UI immediately using cached session/LSP info
-- `omp bench` now runs a mixed suite of randomized built-in challenges by default (chat, prefill, generation); `--profile` isolates one kind
-- Added p50/p95 statistics, distinct input/output throughput metrics, and cost to benchmark output
-- Added live benchmark dashboard with progress tracking and real-time performance estimates
-- Added `--prefill-bytes` to configure synthetic input sizes for prefill benchmarks
-- Added `/shake thinking` to remove model reasoning blocks from session history
-- Added icon support to slash command autocomplete, with unique visuals for actions, files, settings, and other command types
-- Slash-command autocomplete now ranks equally matching commands by how often you use them; usage counts persist across sessions in agent.db
-- Edit tool payloads now accept `＋`-prefixed add lines to insert whole lines in place (consecutive `＋` lines insert together, both marker indent styles supported), and the prompt documents multi-line inline selections for contained restructures.
-- Edit tool now recovers common payload dialect slips instead of erroring: selections trailing their retyped line, elided unchanged lines in inline operations, guillemets used as brackets around old/new blocks, a stray trailing rewrite separator, rewrites written as replacement-directive lists, and apply-patch sentinels mixed into payloads.
-- Edit tool now defers ambiguous operations and resolves them against sibling operations' claimed spans, merges a pure deletion with a contained sibling rewrite into one union replace, reads a bare *** line as the rewrite separator, and strips split envelope sentinels plus decoding noise between an End sentinel and the next Begin.
-- Edit tool moves are now taught as delete-plus-restate; the register re-emit idiom left the prompt and constrained-decoding grammar (the engine still applies it), after benchmarks showed models inventing conflicting semantics for it.
-- Edit tool now reads a bare selection in a rewrite-less operation as the desired text: the current span is captured in place and replaced, keeping boundary whitespace outside the replacement.
-- Added an experimental `mono` edit variant: header-less `§relative/path` operation openers (bare `§` continues in the same file), inline-only changes, a real transpiler front-end, and dialect-voiced errors so retry guidance is always expressible under the mono grammar. Benchmarks with the corrected error surface still favor keeping the block form.
-- Edit tool now accepts the pretrained diff schema wherever models emit it: unified-diff-shaped operations (`@@` hunks, `-`/`+` runs, context lines) apply as inline changes, an added line that is a near-variant of its anchor replaces it instead of duplicating it.
-- Added an experimental `wdiff` edit variant speaking git word-diff (`@@ path` operation headers, `[-old-]{+new+}` inline changes, line-diff runs, `...` skips); benchmarks show block-instinct models roughly double their first-try edit success on it versus the inline-only mono dialect.
-- Edit tool now collapses back-to-back duplicate blocks when a payload states the desired text once, drops overlapping fuzzy-match artifacts of the same operation, and removes a dangling blank line left directly above a closing delimiter after a block deletion.
-- Edit tool now resolves delimiter-garbled punctuation selections against the file, rejects matches that would rewrite part of a longer punctuation run, treats candidates with whitespace-equivalent outcomes as unambiguous, recovers a dropped seam between a selection and its following text, and cleans blank lines left beside opening or closing delimiters after deletions.
 
 ### Changed
 
