@@ -573,6 +573,7 @@ describe("frame-skip coalescing", () => {
 		const component = new RecordingComponent();
 		const controller = new StreamingRevealController({
 			getSmoothStreaming: () => smooth,
+			getLineDisplay: () => false,
 			getHideThinkingBlock: () => false,
 			getProseOnlyThinking: () => true,
 			requestRender: () => {},
