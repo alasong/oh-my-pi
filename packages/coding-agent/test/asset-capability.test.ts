@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { loadCapability } from "../src/capability/index";
+import type { AssetItem } from "../src/capability/asset";
 import "../src/discovery/index";
 
 const tmpDirs: string[] = [];
@@ -35,17 +36,15 @@ describe("asset capability", () => {
 			],
 		});
 
-		const result = await loadCapability("assets", {
+		const result = await loadCapability<AssetItem>("assets", {
 			cwd: root,
-			home: os.homedir(),
-			repoRoot: null,
 		});
 		expect(result.items).toHaveLength(2);
 		const codeAsset = result.items.find(a => a.id === "code-graph");
 		expect(codeAsset).toBeDefined();
-		expect(codeAsset.type).toBe("code");
-		expect(codeAsset.absolutePath).toBe(path.join(root, ".codegraph"));
-		expect(codeAsset._source.level).toBe("project");
+		expect(codeAsset?.type).toBe("code");
+		expect(codeAsset?.absolutePath).toBe(path.join(root, ".codegraph"));
+		expect(codeAsset?._source.level).toBe("project");
 	});
 
 	test("returns empty items with a warning when the manifest is malformed", async () => {
@@ -54,8 +53,6 @@ describe("asset capability", () => {
 
 		const result = await loadCapability("assets", {
 			cwd: root,
-			home: os.homedir(),
-			repoRoot: null,
 		});
 		expect(result.items).toHaveLength(0);
 		expect(result.warnings?.join(" ")).toContain("omp.assets.json");
@@ -65,8 +62,6 @@ describe("asset capability", () => {
 		const root = makeProject();
 		const result = await loadCapability("assets", {
 			cwd: root,
-			home: os.homedir(),
-			repoRoot: null,
 		});
 		expect(result.items).toHaveLength(0);
 	});
