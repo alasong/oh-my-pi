@@ -24,6 +24,7 @@ import "../capability/tool";
 import "./agent-plugins";
 import "./agents-md";
 import "./asset-manifest";
+import "./claude-md";
 import "./builtin";
 import "./builtin-defaults";
 import "./claude";
