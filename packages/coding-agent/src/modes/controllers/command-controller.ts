@@ -13,7 +13,7 @@ import {
 import { Loader, Markdown, padding, Spacer, Text, visibleWidth } from "@oh-my-pi/pi-tui";
 import { formatDuration, logger, Snowflake, sanitizeText } from "@oh-my-pi/pi-utils";
 import { shouldEnableAppendOnlyContext } from "../../config/append-only-context-mode";
-import { isPersistentShellCdCommand } from "../../exec/bash-executor";
+import { type BashResult, isPersistentShellCdCommand } from "../../exec/bash-executor";
 import { type LoadedCustomShare, loadCustomShare } from "../../export/custom-share";
 import { parseExportArgs } from "../../export/html/args";
 import { shareSession } from "../../export/share";
@@ -1284,6 +1284,20 @@ export class CommandController {
 					truncation: meta?.truncation,
 				});
 			}
+			try {
+				// `bash.cdFollowsShell` (default false): a bare !cd only changes the
+				// persistent shell's own cwd; the omp project directory stays anchored.
+				// Opting in restores upstream behavior (move the project with !cd).
+				if (shouldPersistCwd && this.ctx.settings.get("bash.cdFollowsShell") === true) {
+					await this.#applyBashResultCwd(result);
+				}
+			} catch (error) {
+				this.ctx.showError(
+					`Bash command completed, but OMP failed to update its working directory: ${
+						error instanceof Error ? error.message : "Unknown error"
+					}`,
+				);
+			}
 		} catch (error) {
 			if (this.ctx.bashComponent) {
 				this.ctx.bashComponent.setComplete(undefined, false);
@@ -1293,6 +1307,43 @@ export class CommandController {
 
 		this.ctx.bashComponent = undefined;
 		this.ctx.ui.requestRender();
+	}
+
+	async #moveInteractiveCwd(resolvedPath: string): Promise<void> {
+		const previousState = this.ctx.sessionManager.captureState();
+		await this.ctx.sessionManager.moveTo(resolvedPath);
+		let applied = false;
+		try {
+			applied = await this.ctx.applyCwdChange(resolvedPath);
+		} catch (error) {
+			await this.#restoreAfterMoveFailure(previousState, error);
+			return;
+		}
+		if (!applied) {
+			await this.#restoreAfterMoveFailure(previousState);
+			return;
+		}
+
+		this.ctx.updateEditorBorderColor();
+		await this.ctx.reloadTodos();
+	}
+
+	async #applyBashResultCwd(result: BashResult): Promise<void> {
+		if (result.cancelled || result.exitCode !== 0 || !result.workingDir) return;
+		if (!path.isAbsolute(result.workingDir)) return;
+
+		const resolvedPath = path.resolve(result.workingDir);
+		if (resolvedPath === path.resolve(this.ctx.sessionManager.getCwd())) return;
+
+		let isDirectory = false;
+		try {
+			isDirectory = (await fs.stat(resolvedPath)).isDirectory();
+		} catch {
+			isDirectory = false;
+		}
+		if (!isDirectory) return;
+
+		await this.#moveInteractiveCwd(resolvedPath);
 	}
 
 	async handlePythonCommand(code: string, excludeFromContext = false): Promise<void> {

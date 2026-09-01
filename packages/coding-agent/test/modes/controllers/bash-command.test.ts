@@ -56,6 +56,9 @@ function createCwdContext(sourceDir: string, isStreaming = false) {
 		present,
 		showError: vi.fn(),
 		showWarning: vi.fn(),
+		settings: {
+			get: vi.fn((key: string) => (key === "bash.cdFollowsShell" ? false : undefined)),
+		},
 		applyCwdChange: vi.fn(async (cwd: string) => {
 			expect(state.cwd).toBe(cwd);
 			return true;
@@ -302,6 +305,40 @@ describe("bash shortcut command", () => {
 			expect(ctx.applyCwdChange).not.toHaveBeenCalled();
 			expect(ctx.updateEditorBorderColor).not.toHaveBeenCalled();
 			expect(ctx.reloadTodos).not.toHaveBeenCalled();
+			expect(ctx.showError).not.toHaveBeenCalled();
+		} finally {
+			await fs.rm(sourceDir, { recursive: true, force: true });
+		}
+	});
+
+	it("migrates the project directory on a standalone cd when cdFollowsShell is enabled", async () => {
+		const sourceDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-bash-cd-follows-"));
+		const childDir = path.join(sourceDir, "child");
+		await fs.mkdir(childDir);
+		try {
+			const { ctx, executeBash, state } = createCwdContext(sourceDir);
+			(ctx.settings as { get: (key: string) => unknown }).get = vi.fn(
+				(key: string) => (key === "bash.cdFollowsShell" ? true : undefined),
+			);
+			executeBash.mockImplementationOnce(async () => ({
+				output: "",
+				exitCode: 0,
+				cancelled: false,
+				truncated: false,
+				totalLines: 0,
+				totalBytes: 0,
+				outputLines: 0,
+				outputBytes: 0,
+				workingDir: childDir,
+			}));
+			const controller = new CommandController(ctx);
+
+			await controller.handleBashCommand("cd child");
+
+			expect(state.cwd).toBe(childDir);
+			expect(ctx.applyCwdChange).toHaveBeenCalledWith(childDir);
+			expect(ctx.updateEditorBorderColor).toHaveBeenCalled();
+			expect(ctx.reloadTodos).toHaveBeenCalled();
 			expect(ctx.showError).not.toHaveBeenCalled();
 		} finally {
 			await fs.rm(sourceDir, { recursive: true, force: true });
