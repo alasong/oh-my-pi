@@ -4086,6 +4086,17 @@ export const SETTINGS_SCHEMA = {
 			description: "Automatically background long-running bash commands and deliver the result later",
 		},
 	},
+	"bash.lineDisplay": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "shell",
+			group: "Bash",
+			label: "Line-Based Bash Output",
+			description:
+				"Display bash command streaming output line by line instead of character by character. An incomplete trailing line is held back until a newline or command completion; the AI's streaming reply is unaffected.",
+		},
+	},
 	"bash.patterns": {
 		type: "array",
 		default: [],
