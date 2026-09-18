@@ -4097,6 +4097,17 @@ export const SETTINGS_SCHEMA = {
 				"Display bash command streaming output line by line instead of character by character. An incomplete trailing line is held back until a newline or command completion; the AI's streaming reply is unaffected.",
 		},
 	},
+	"bash.cdFollowsShell": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "shell",
+			group: "Bash",
+			label: "Cd Follows Shell",
+			description:
+				"When enabled, a bare !cd in the persistent shell also moves the omp project directory to the target. When disabled (default), !cd only changes the persistent shell's own cwd for subsequent ! commands, keeping the project directory anchored.",
+		},
+	},
 	"bash.patterns": {
 		type: "array",
 		default: [],

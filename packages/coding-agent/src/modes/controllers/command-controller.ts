@@ -1408,7 +1408,12 @@ export class CommandController {
 				});
 			}
 			try {
-				if (shouldPersistCwd) return await this.#applyBashResultCwd(result);
+				// `bash.cdFollowsShell` (default false): a bare !cd only changes the
+				// persistent shell's own cwd; the omp project directory stays anchored.
+				// Opting in restores upstream behavior (move the project with !cd).
+				if (shouldPersistCwd && this.ctx.settings.get("bash.cdFollowsShell") === true) {
+					return await this.#applyBashResultCwd(result);
+				}
 			} catch (error) {
 				this.ctx.showError(
 					`Bash command completed, but OMP failed to update its working directory: ${

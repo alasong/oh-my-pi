@@ -65,11 +65,18 @@ function createCwdContext(sourceDir: string, isStreaming = false, showImages = t
 		chatContainer: createContainer(),
 		pendingMessagesContainer,
 		pendingBashComponents: [],
-		settings: { get: () => showImages, flush: vi.fn(async () => {}) },
 		ui: { requestRender: vi.fn(), requestComponentRender: vi.fn() },
 		present,
 		showError: vi.fn(),
 		showWarning: vi.fn(),
+		settings: {
+			get: vi.fn((key: string) => {
+				if (key === "bash.cdFollowsShell") return false;
+				if (key === "terminal.showImages") return showImages;
+				return undefined;
+			}),
+			flush: vi.fn(async () => {}),
+		},
 		applyCwdChange: vi.fn(async (cwd: string) => {
 			expect(state.cwd).toBe(cwd);
 			state.workspaceCwd = cwd;
@@ -145,7 +152,7 @@ describe("bash shortcut command", () => {
 		});
 	});
 
-	it("persists standalone and bare cd before the next user-shell command", async () => {
+	it("runs cd in the persistent shell without migrating the project directory", async () => {
 		const sourceDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-bash-cd-source-"));
 		const childDir = path.join(sourceDir, "child");
 		await fs.mkdir(childDir);
@@ -186,12 +193,7 @@ describe("bash shortcut command", () => {
 			await controller.handleBashCommand("pwd");
 
 			expect(state.cwd).toBe(sourceDir);
-			expect(state.workspaceCwd).toBe(sourceDir);
-			expect(state.artifactCwd).toBe(sourceDir);
-			expect(state.completedBtwVisible).toBe(false);
-			expect(ctx.session.moveSession).toHaveBeenNthCalledWith(1, childDir);
-			expect(ctx.session.moveSession).toHaveBeenNthCalledWith(2, sourceDir);
-			expect(state.executedCwds).toEqual([sourceDir, childDir, sourceDir]);
+			expect(state.executedCwds).toEqual([sourceDir, sourceDir, sourceDir]);
 			expect(executeBash).toHaveBeenCalledTimes(3);
 			expect(executeBash).toHaveBeenNthCalledWith(1, "cd child", expect.any(Function), {
 				excludeFromContext: false,
@@ -211,10 +213,9 @@ describe("bash shortcut command", () => {
 					onChunk: expect.any(Function),
 				},
 			});
-			expect(ctx.applyCwdChange).toHaveBeenNthCalledWith(1, childDir);
-			expect(ctx.applyCwdChange).toHaveBeenNthCalledWith(2, sourceDir);
-			expect(ctx.updateEditorBorderColor).toHaveBeenCalledTimes(2);
-			expect(ctx.reloadTodos).toHaveBeenCalledTimes(2);
+			expect(ctx.applyCwdChange).not.toHaveBeenCalled();
+			expect(ctx.updateEditorBorderColor).not.toHaveBeenCalled();
+			expect(ctx.reloadTodos).not.toHaveBeenCalled();
 			expect(ctx.showError).not.toHaveBeenCalled();
 		} finally {
 			await fs.rm(sourceDir, { recursive: true, force: true });
@@ -359,12 +360,6 @@ describe("bash shortcut command", () => {
 				outputBytes: 12,
 				workingDir: childDir,
 			}));
-			ctx.applyCwdChange = vi.fn(async (cwd: string) => {
-				expect(state.gateHeld).toBe(true);
-				if (cwd === childDir) throw new Error("refresh failed");
-				state.workspaceCwd = cwd;
-				return true;
-			});
 			const controller = new CommandController(ctx);
 
 			await controller.handleBashCommand("cd child");
@@ -373,13 +368,44 @@ describe("bash shortcut command", () => {
 			expect(component).toBeInstanceOf(BashExecutionComponent);
 			expect((component as BashExecutionComponent).getOutput()).toContain("final output");
 			expect(state.cwd).toBe(sourceDir);
-			expect(state.workspaceCwd).toBe(sourceDir);
-			expect(state.artifactCwd).toBe(sourceDir);
-			expect(state.completedBtwVisible).toBe(true);
-			expect(ctx.showError).toHaveBeenCalledWith(expect.stringContaining("refresh failed"));
-			expect(ctx.shutdown).not.toHaveBeenCalled();
-			await controller.handleBashCommand("pwd");
-			expect(state.executedCwds).toEqual([sourceDir]);
+			expect(ctx.applyCwdChange).not.toHaveBeenCalled();
+			expect(ctx.updateEditorBorderColor).not.toHaveBeenCalled();
+			expect(ctx.reloadTodos).not.toHaveBeenCalled();
+			expect(ctx.showError).not.toHaveBeenCalled();
+		} finally {
+			await fs.rm(sourceDir, { recursive: true, force: true });
+		}
+	});
+
+	it("migrates the project directory on a standalone cd when cdFollowsShell is enabled", async () => {
+		const sourceDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-bash-cd-follows-"));
+		const childDir = path.join(sourceDir, "child");
+		await fs.mkdir(childDir);
+		try {
+			const { ctx, executeBash, state } = createCwdContext(sourceDir);
+			(ctx.settings as { get: (key: string) => unknown }).get = vi.fn((key: string) =>
+				key === "bash.cdFollowsShell" ? true : undefined,
+			);
+			executeBash.mockImplementationOnce(async () => ({
+				output: "",
+				exitCode: 0,
+				cancelled: false,
+				truncated: false,
+				totalLines: 0,
+				totalBytes: 0,
+				outputLines: 0,
+				outputBytes: 0,
+				workingDir: childDir,
+			}));
+			const controller = new CommandController(ctx);
+
+			await controller.handleBashCommand("cd child");
+
+			expect(state.cwd).toBe(childDir);
+			expect(ctx.applyCwdChange).toHaveBeenCalledWith(childDir);
+			expect(ctx.updateEditorBorderColor).toHaveBeenCalled();
+			expect(ctx.reloadTodos).toHaveBeenCalled();
+			expect(ctx.showError).not.toHaveBeenCalled();
 		} finally {
 			await fs.rm(sourceDir, { recursive: true, force: true });
 		}
@@ -462,6 +488,9 @@ describe("bash shortcut command", () => {
 		let pending: Promise<void> | undefined;
 		try {
 			const { ctx, executeBash, state } = createCwdContext(sourceDir);
+			(ctx.settings as { get: (key: string) => unknown }).get = vi.fn((key: string) =>
+				key === "bash.cdFollowsShell" ? true : undefined,
+			);
 			executeBash.mockImplementationOnce(async () => {
 				executionStarted.resolve();
 				return executionResult.promise;
@@ -540,6 +569,9 @@ describe("bash shortcut command", () => {
 		await fs.mkdir(childDir);
 		try {
 			const { ctx, executeBash, present, state } = createCwdContext(sourceDir);
+			(ctx.settings as { get: (key: string) => unknown }).get = vi.fn((key: string) =>
+				key === "bash.cdFollowsShell" ? true : undefined,
+			);
 			executeBash.mockResolvedValueOnce({
 				output: "cd output",
 				exitCode: 0,
