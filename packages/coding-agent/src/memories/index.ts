@@ -85,6 +85,18 @@ const DEFAULTS: MemoryRuntimeConfig = {
 	summaryInjectionTokenLimit: 5_000,
 };
 
+/**
+ * Output-token ceilings for the memory model calls.
+ *
+ * Reasoning tokens share the completion budget with the answer, so a ceiling sized for the answer alone can
+ * be consumed entirely by thinking: deepseek-v4-flash spent all 8192 tokens of the consolidation call on
+ * reasoning and emitted no text block at all, which the pipeline reported as a misleading
+ * "phase2 JSON parse failure" and retried forever. Both ceilings leave headroom for reasoning on top of the
+ * JSON payload; providers still clamp them to the model's own maximum output.
+ */
+const STAGE1_MAX_TOKENS = 16_384;
+const PHASE2_MAX_TOKENS = 32_768;
+
 interface Stage1Stats {
 	claimed: number;
 	succeeded: number;
@@ -791,7 +803,7 @@ async function runStage1Job(options: {
 						apiKey,
 						sessionId: options.sessionId,
 						metadata: options.metadata,
-						maxTokens: Math.max(1024, Math.min(4096, Math.floor(modelMaxTokens * 0.2))),
+						maxTokens: Math.max(1024, Math.min(STAGE1_MAX_TOKENS, Math.floor(modelMaxTokens * 0.2))),
 						reasoning: clampThinkingLevelForModel(model, Effort.Low),
 					},
 				),
@@ -806,6 +818,12 @@ async function runStage1Job(options: {
 			.map(c => c.text)
 			.join("\n")
 			.trim();
+		if (response.stopReason === "length") {
+			return { kind: "failed", reason: `stage1 output truncated at ${STAGE1_MAX_TOKENS} tokens before emitting JSON` };
+		}
+		if (!text) {
+			return { kind: "failed", reason: `stage1 returned no text (stop_reason=${response.stopReason})` };
+		}
 		const parsed = parseJsonObject(text);
 		if (!parsed) {
 			return { kind: "failed", reason: "stage1 JSON parse failure" };
@@ -934,7 +952,7 @@ async function runConsolidationModel(options: {
 					apiKey,
 					sessionId: options.sessionId,
 					metadata: options.metadata,
-					maxTokens: 8192,
+					maxTokens: PHASE2_MAX_TOKENS,
 					reasoning: clampThinkingLevelForModel(model, Effort.Medium),
 				},
 			),
@@ -948,6 +966,12 @@ async function runConsolidationModel(options: {
 		.map(c => c.text)
 		.join("\n")
 		.trim();
+	if (response.stopReason === "length") {
+		throw new Error(`phase2 output truncated at ${PHASE2_MAX_TOKENS} tokens before emitting JSON`);
+	}
+	if (!text) {
+		throw new Error(`phase2 returned no text (stop_reason=${response.stopReason})`);
+	}
 	const parsed = parseJsonObject(text);
 	if (!parsed) throw new Error("phase2 JSON parse failure");
 	const schemaOutput = parseConsolidationOutputSchema(parsed);

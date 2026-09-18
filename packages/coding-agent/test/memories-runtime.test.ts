@@ -334,6 +334,63 @@ describe("memories runtime", () => {
 		expect(spy.mock.calls[1]?.[2]?.reasoning).toBe(Effort.High);
 	});
 
+	test("phase2 budgets output beyond the reasoning share and reports truncation as truncation", async () => {
+		// Regression: the consolidation call asked for 8192 output tokens while reasoning tokens share
+		// that budget. A thinking-heavy model spent all of it on reasoning and emitted no text block,
+		// which the queue recorded as "phase2 JSON parse failure" and retried forever (observed live on
+		// deepseek-v4-flash: stop_reason=max_tokens, output_tokens=8192, blocks=[thinking]).
+		const fx = await createFixture();
+		const rolloutPath = path.join(fx.sessionDir, "thread-truncated.jsonl");
+		const rolloutRows = [
+			{ type: "session", id: "thread-truncated", cwd: fx.agentDir },
+			{ type: "message", message: { role: "user", content: "summarize this rollout" } },
+		];
+		await fs.writeFile(rolloutPath, `${rolloutRows.map(row => JSON.stringify(row)).join("\n")}\n`);
+
+		const spy = vi
+			.spyOn(ai, "completeSimple")
+			.mockResolvedValueOnce({
+				stopReason: "end_turn",
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify({
+							rollout_summary: "Rollout summary",
+							rollout_slug: "thread-truncated",
+							raw_memory: "Raw memory",
+						}),
+					},
+				],
+				usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2 },
+			} as unknown as ai.AssistantMessage) // hand-built stub: the pipeline reads stopReason/content/usage only
+			.mockResolvedValueOnce({
+				stopReason: "length",
+				content: [{ type: "thinking", thinking: "reasoning consumed the whole budget" }],
+			} as unknown as ai.AssistantMessage); // same: thinking-only response, no text block
+
+		startMemoryStartupTask({
+			session: fx.session,
+			settings: fx.settings,
+			modelRegistry: fx.modelRegistry,
+			agentDir: fx.agentDir,
+			taskDepth: 0,
+		});
+
+		await settle(fx.whenSettled, "truncated phase2 pipeline");
+
+		// The answer shares the completion budget with reasoning, so the ceiling must sit well above
+		// the 8192 that reasoning alone can exhaust.
+		expect(spy.mock.calls[1]?.[2]?.maxTokens ?? 0).toBeGreaterThan(8192);
+
+		const db = memoryStorage.openMemoryDb(getAgentDbPath(fx.agentDir));
+		const row = db
+			.prepare("SELECT last_error, status FROM jobs WHERE kind = 'memory_consolidate_global'")
+			.get() as { last_error: string; status: string } | null;
+		memoryStorage.closeMemoryDb(db);
+		expect(row?.status).toBe("error");
+		expect(row?.last_error).toContain("truncated");
+	});
+
 	test("phase2 sync prunes stale summaries and preserves raw memory ordering", async () => {
 		const fx = await createFixture();
 		vi.spyOn(ai, "completeSimple").mockResolvedValue({
