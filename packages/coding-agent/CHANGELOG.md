@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+本地 fork 改动简要说明（中文）：`docs/local/CHANGELOG.zh.md`。
 ## [18.2.3] - 2026-09-17
 
 ### Breaking Changes
