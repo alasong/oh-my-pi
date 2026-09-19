@@ -161,13 +161,18 @@ conflicts are **rename conflicts**, and the fix is to port the fork's delta onto
 file — never to keep the fork's copy, never to re-add the delta at the old path. Per-commit
 worth and drop candidates are in `docs/local/fork-commit-audit.md`.
 
-Two things bit on this sync and are worth checking first next time:
+Three things bit on this sync and are worth checking first next time:
 
 1. A fork test importing a moved module (here `@oh-my-pi/pi-coding-agent/modes/components/…`)
    only fails at `check:types`, never at merge time — move the test with the component.
 2. A moved component loses its settings access. The delta is not "delete the settings read"
    but "route it through the host-pushed preference seam" (level 2b), and the host-side hook
    then needs its own test (`test/bash-display-preferences.test.ts`).
+3. A host-pushed preference is **process-wide mutable state**, and `packages/tui` is run at
+   `--parallel=4`. A tui-side test that flips one therefore races every sibling test that
+   constructs the component (measured: `bash-execution-sixel.test.ts` failed with the mutating
+   file in the same parallel batch and passed serially, 1/435). Mutating fork tests belong in
+   the coding-agent native bucket (`--parallel=1`), not in the tui package.
 
 ## Zero-conflict inventory (new files)
 
@@ -183,9 +188,12 @@ Carried at no merge cost — new files, or new files inside upstream directories
 - `test/asset-anchors.test.ts`, `test/asset-capability.test.ts`,
   `test/asset-drift-check.test.ts`, `test/asset-git-hooks.test.ts`, `test/asset-init.test.ts`
 - `test/bash-display-preferences.test.ts` (host-side: setting → preference → rendered preview)
-- `packages/tui/test/bash-execution-line-display.test.ts` — moved in with the component at the
-  2026-09-19 sync, so it conflicts only if upstream edits it; `git log --follow` tracks it. The
-  rest of the fork's bash-execution suite moved too.
+- `packages/coding-agent/test/bash-execution-line-display.test.ts` — tests a `pi-tui`
+  component from the host package on purpose: it flips the process-wide
+  `chatTranscriptDisplayPreferences.lineDisplay`, and `packages/tui` is run at `--parallel=4`,
+  so from there it raced every sibling bash test. The coding-agent native bucket runs at
+  `--parallel=1`, which is where a global-state test belongs. The rest of the fork's
+  bash-execution suite stayed in `packages/tui`.
 
 Prefer extending this list over growing the hotspot table.
 
