@@ -78,6 +78,27 @@ describe("hub unified wait", () => {
 		}
 	});
 
+	test("a window expiry with no event is marked and hinted, not mistaken for progress", async () => {
+		vi.useFakeTimers();
+		const manager = new AsyncJobManager({ onJobComplete: () => {} });
+		const job = registerHangingJob(manager, "unfinished job");
+		const tool = new HubTool(makeSession(manager));
+		try {
+			const pending = tool.execute("deadline", { op: "wait" });
+			vi.advanceTimersByTime(5_000);
+			const result = await pending;
+			const details = result.details as CoordinationDetails;
+			expect(details.noEvent).toBe(true);
+			const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+			expect(text).toContain("Wait window expired with no event");
+			expect(text).toContain("not progress");
+			// The snapshot body is unchanged apart from the hint.
+			expect(details.jobs?.map(j => j.status)).toEqual(["running"]);
+		} finally {
+			manager.cancel(job.id);
+		}
+	});
+
 	test("an incoming message settles the wait while watched jobs keep running", async () => {
 		const registry = AgentRegistry.global();
 		registry.register({ id: SELF_ID, displayName: "main", kind: "main", session: null });
@@ -98,6 +119,8 @@ describe("hub unified wait", () => {
 		expect(details.op).toBe("wait");
 		expect(details.waited?.from).toBe("Peer");
 		expect(details.waited?.body).toBe("shared file is yours");
+		// Only a bare timeout is marked; a real event is untouched.
+		expect(details.noEvent).toBeUndefined();
 		// The job was not consumed by the message win.
 		expect(manager.getJob(job.id)?.status).toBe("running");
 
@@ -121,6 +144,8 @@ describe("hub unified wait", () => {
 		expect(details.op).toBe("wait");
 		expect(details.jobs?.map(j => j.status)).toEqual(["completed"]);
 		expect(details.jobs?.[0]?.resultText).toBe("done output");
+		// A settled job is a real event, so the snapshot stays unmarked.
+		expect(details.noEvent).toBeUndefined();
 		const text = result.content[0]?.type === "text" ? result.content[0].text : "";
 		expect(text).toContain("## Completed (1)");
 	});

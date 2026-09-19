@@ -38,6 +38,7 @@ import { getSixelLineMask } from "../utils/sixel";
 import { TerminalGraphicsDecoder } from "../utils/terminal-graphics";
 import type { ToolSession } from ".";
 import { truncateForPrompt } from "./approval";
+import { isExpectedNegativeExit } from "./bash-exit-semantics";
 import { type BashInteractiveResult, runInteractiveBashPty } from "./bash-interactive";
 import { checkBashInterception } from "./bash-interceptor";
 import { rewriteGitWorktreeAdd } from "./bash-worktree-rewrite";
@@ -357,6 +358,13 @@ export interface BashToolDetails {
 	wallTimeMs?: number;
 	/** Exit code of a command that ran to completion but failed (non-zero). */
 	exitCode?: number;
+	/**
+	 * True when the non-zero exit is this command's normal negative answer
+	 * (`grep` with no matches, `diff` differences, a false `test`, ...): the
+	 * renderer shows a warning border instead of error red. The exit code stays
+	 * in `exitCode`.
+	 */
+	expectedNonZeroExit?: boolean;
 	/** True when the command was killed by its timeout deadline (not a failure). */
 	timedOut?: boolean;
 	/** Live ACP update only; completed results refer to released terminals. */
@@ -782,10 +790,28 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			requestedTimeoutSec?: number;
 			notices?: readonly string[];
 			wallTimeMs?: number;
+			/** The command that produced `result`, for exit-status classification. */
+			command?: string;
 		} = {},
 	): Promise<AgentToolResult<BashToolDetails>> {
 		const exitCode = result.exitCode;
 		const failedExit = exitCode !== undefined && exitCode !== 0;
+		// A non-zero exit that is the command's normal negative answer (`grep`
+		// with no matches, `diff` differences, a false `test`, ...) can keep its
+		// exit code while being reported as a warning rather than an error, so an
+		// expected answer is not read as a broken command. It is opt-in:
+		// `bash.expectedNonZeroExitAsWarning` defaults to false, which leaves the
+		// upstream error classification untouched. The whitelist in
+		// bash-exit-semantics.ts declines anything ambiguous.
+		let expectedNonZeroExit = false;
+		if (
+			failedExit &&
+			exitCode !== undefined &&
+			options.command !== undefined &&
+			this.session.settings.get("bash.expectedNonZeroExitAsWarning") === true
+		) {
+			expectedNonZeroExit = isExpectedNegativeExit(options.command, exitCode);
+		}
 
 		const outputLines = [this.#formatResultOutput(result)];
 		const notices: string[] = [];
@@ -822,6 +848,9 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		}
 		if (failedExit) {
 			details.exitCode = exitCode;
+		}
+		if (expectedNonZeroExit) {
+			details.expectedNonZeroExit = true;
 		}
 
 		// Final-defense inline cap config, shared by the timeout and normal
@@ -864,7 +893,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		const resultBuilder = toolResult(details)
 			.content([{ type: "text", text: cappedOutputText }, ...(result.images ?? [])])
 			.truncationFromSummary(result, { direction: "tail" });
-		if (failedExit) resultBuilder.error();
+		if (failedExit && !expectedNonZeroExit) resultBuilder.error();
 		return resultBuilder.done();
 	}
 
@@ -957,6 +986,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 						requestedTimeoutSec: options.requestedTimeoutSec,
 						notices: options.notices ?? [],
 						wallTimeMs,
+						command: options.command,
 					});
 					const finalText = this.#extractTextResult(finalResult);
 					latestText = finalText;
@@ -1497,6 +1527,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 					requestedTimeoutSec,
 					notices: bridgeNotices,
 					wallTimeMs: performance.now() - bridgeWallTimeStart,
+					command,
 				});
 			} finally {
 				clearTimeout(timeoutTimer);
@@ -1582,6 +1613,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			requestedTimeoutSec,
 			notices: pendingNotices,
 			wallTimeMs,
+			command,
 		});
 	}
 }
@@ -1713,7 +1745,8 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 			const cmdLines = args ? formatBashCommandLines(renderArgs, uiTheme) : undefined;
 			const isError = result.isError === true;
 			const isPartial = options.isPartial === true;
-			const success = !isPartial && !isError;
+			const isWarning = result.details?.expectedNonZeroExit === true;
+			const success = !isPartial && !isError && !isWarning;
 			const details = result.details;
 			const isTimeout = details?.timedOut === true;
 			const header =
@@ -1726,7 +1759,7 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 										title: config.resolveTitle(args, options),
 									}
 								: {
-										icon: isPartial ? "pending" : isTimeout ? "warning" : "error",
+										icon: isPartial ? "pending" : isTimeout || isWarning ? "warning" : "error",
 										title: config.resolveTitle(args, options),
 									},
 							uiTheme,
@@ -1810,7 +1843,7 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 					if (rawOutputArtifact.artifactId) {
 						statsParts.push(`Artifact: ${rawOutputArtifact.artifactId}`);
 					}
-					if (isError && typeof details?.exitCode === "number") {
+					if ((isError || isWarning) && typeof details?.exitCode === "number") {
 						statsParts.push(`Exit: ${details.exitCode}`);
 					}
 					const timeoutLine =
@@ -1870,7 +1903,7 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 					const framed = outputBlock.render(
 						{
 							header,
-							state: isPartial ? "pending" : isError ? (isTimeout ? "warning" : "error") : "success",
+							state: isPartial ? "pending" : isWarning || isTimeout ? "warning" : isError ? "error" : "success",
 							sections: [
 								{
 									// Viewport-sized tail window in every state — streaming and final

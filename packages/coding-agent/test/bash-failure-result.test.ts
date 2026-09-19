@@ -11,7 +11,7 @@ afterEach(() => {
 	mock.restore();
 });
 
-function makeSession(): ToolSession {
+function makeSession(overrides: { expectedNonZeroExitAsWarning?: boolean } = {}): ToolSession {
 	return {
 		cwd: "/tmp",
 		hasUI: false,
@@ -27,6 +27,7 @@ function makeSession(): ToolSession {
 				if (key === "astEdit.enabled") return false;
 				if (key === "grep.enabled") return false;
 				if (key === "glob.enabled") return false;
+				if (key === "bash.expectedNonZeroExitAsWarning") return overrides.expectedNonZeroExitAsWarning;
 				return undefined;
 			},
 			getBashInterceptorRules() {
@@ -99,6 +100,63 @@ describe("BashTool execution results", () => {
 		const text = result.content.find(c => c.type === "text")?.text ?? "";
 		expect(text).toContain("hi");
 		expect(text).not.toContain("Command exited with code");
+	});
+
+	it("reports a command's normal negative exit as a warning, keeping the exit code", async () => {
+		// `grep` with no matches is the answer to the question that was asked, not
+		// a broken command: keep the exit code visible without flagging an error.
+		const tool = new BashTool(makeSession({ expectedNonZeroExitAsWarning: true }));
+		const result = await tool.execute("call-no-match", { command: "grep -n zzz_never_matches /dev/null" });
+
+		expect(result.isError).toBeUndefined();
+		expect(result.details?.expectedNonZeroExit).toBe(true);
+		expect(result.details?.exitCode).toBe(1);
+		const text = result.content.find(c => c.type === "text")?.text ?? "";
+		expect(text).toContain("Command exited with code 1");
+	});
+
+	it("keeps an exit status it cannot attribute to a normal negative answer an error", async () => {
+		// An `&&` chain can inherit an earlier segment's failure, so the exit code
+		// does not prove the `grep` simply found no match.
+		const tool = new BashTool(makeSession({ expectedNonZeroExitAsWarning: true }));
+		const result = await tool.execute("call-chain", {
+			command: "false && grep -n zzz_never_matches /dev/null",
+		});
+
+		expect(result.isError).toBe(true);
+		expect(result.details?.expectedNonZeroExit).toBeUndefined();
+		expect(result.details?.exitCode).toBe(1);
+	});
+
+	it("keeps an unexpected exit code from a known command family an error", async () => {
+		// `grep` exits 2 when it cannot read an operand: a real failure, not the
+		// "no match" answer that exits 1.
+		const tool = new BashTool(makeSession({ expectedNonZeroExitAsWarning: true }));
+		const result = await tool.execute("call-grep-error", {
+			command: "grep -n zzz_never_matches /dev/null /nonexistent_path_omp_xyz",
+		});
+
+		expect(result.isError).toBe(true);
+		expect(result.details?.expectedNonZeroExit).toBeUndefined();
+		expect(result.details?.exitCode).toBe(2);
+	});
+
+	it("keeps the upstream error classification while the setting is off", async () => {
+		// The setting defaults to false, so an unset session (the stub returns
+		// undefined) and an explicitly disabled one both report the exit code as
+		// an error, exactly as upstream does.
+		for (const [index, overrides] of [{}, { expectedNonZeroExitAsWarning: false }].entries()) {
+			const tool = new BashTool(makeSession(overrides));
+			const result = await tool.execute(`call-no-match-off-${index}`, {
+				command: "grep -n zzz_never_matches /dev/null",
+			});
+
+			expect(result.isError).toBe(true);
+			expect(result.details?.expectedNonZeroExit).toBeUndefined();
+			expect(result.details?.exitCode).toBe(1);
+			const text = result.content.find(c => c.type === "text")?.text ?? "";
+			expect(text).toContain("Command exited with code 1");
+		}
 	});
 
 	it("keeps the raw diagnostics when a minimized failure cannot be persisted as an artifact", async () => {

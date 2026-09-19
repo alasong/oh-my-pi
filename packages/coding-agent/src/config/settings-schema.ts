@@ -4097,6 +4097,7 @@ export const SETTINGS_SCHEMA = {
 				"Display bash command streaming output line by line instead of character by character. An incomplete trailing line is held back until a newline or command completion; the AI's streaming reply is unaffected.",
 		},
 	},
+
 	"bash.cdFollowsShell": {
 		type: "boolean",
 		default: false,
@@ -4106,6 +4107,17 @@ export const SETTINGS_SCHEMA = {
 			label: "Cd Follows Shell",
 			description:
 				"When enabled, a bare !cd in the persistent shell also moves the omp project directory to the target. When disabled (default), !cd only changes the persistent shell's own cwd for subsequent ! commands, keeping the project directory anchored.",
+		},
+	},
+	"bash.expectedNonZeroExitAsWarning": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "shell",
+			group: "Bash",
+			label: "Expected Non-Zero Exit as Warning",
+			description:
+				"When enabled, report a command whose non-zero exit is its normal negative answer (grep with no matches, diff differences, a false test, ...) as a warning instead of an error, keeping the exit code visible. Only unambiguous single commands are recognized (&& lists, redirections, and wrappers such as bash -c stay errors). Disabled by default: the upstream error classification is unchanged.",
 		},
 	},
 	"bash.patterns": {

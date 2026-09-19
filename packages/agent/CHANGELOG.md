@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed (fork-local)
+
+- The compaction summary prompt now requires each key decision to keep the rationale it was made with — quoting the original sentence verbatim when the rationale was stated in the conversation — and explicitly forbids flattening a decision into a general statement. A compaction previously kept the decision but dropped why it had been chosen.
+
 ## [18.2.1] - 2026-09-15
 
 ### Added

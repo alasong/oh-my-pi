@@ -22,7 +22,9 @@ You MUST use this format (sections can be omitted if not applicable):
 - [Issues preventing progress]
 
 ## Key Decisions
-- **[Decision]**: [Brief rationale]
+- **[Decision]**: [What was decided] — [The rationale given at the time]. If an alternative was considered and rejected, name it and state why it was rejected.
+  - If the rationale was stated explicitly in the conversation, quote the exact key sentence(s) verbatim (in quotation marks) instead of paraphrasing it.
+  - You MUST NOT flatten a decision into a general statement. Keeping one decision with its original wording is better than compressing it into a vague summary.
 
 ## Next Steps
 1. [Ordered list of next actions]

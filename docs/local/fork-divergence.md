@@ -13,19 +13,23 @@ re-injects it near every turn, so it applies automatically to any session in thi
 
 ## Measured divergence surface
 
-Basis: fork `main` @ `4c150c8da1`, upstream/main @ `2e6b5b79a0` (2026-09-09), merge base
-`2e6b5b79a0`.
+Basis: fork working tree @ `2026-09-19` (6 commits ahead of the previous basis),
+upstream/main @ 59 commits ahead of the fork's tip, merge base `a2d83061c5`.
 
 | Metric | Value |
 |---|---|
-| Commits ahead of upstream | 26 |
-| Commits behind upstream | 0 |
-| Files changed vs merge base | 35 |
-| Lines added / removed | +2295 / −47 |
+| Commits ahead of upstream | 6 |
+| Commits behind upstream | 59 |
+| Files changed vs merge base | 47 |
+| Lines added / removed | +2974 / −80 |
 
-The shape matters more than the size: 30 of the 35 are new files, and the fork has deleted
-only 47 lines upstream-wide. Divergence is already concentrated in additive, isolatable
+The shape matters more than the size: 23 of the 47 are new files, and the fork has deleted
+only 80 lines upstream-wide. Divergence is already concentrated in additive, isolatable
 code — this policy exists to keep it that way.
+
+Re-measured 2026-09-19, counting the uncommitted context/efficiency work of that day.
+Upstream has since moved 59 commits ahead, so the merge base is now older than the fork's
+tip: expect these numbers to move again at the next sync.
 
 ## The placement ladder
 
@@ -52,6 +56,9 @@ Existing patterns to copy:
 
 - `bash.cdFollowsShell` — gates `!cd` migrating the omp project directory (default off:
   upstream behavior).
+- `bash.expectedNonZeroExitAsWarning` — classifies a command's normal negative exit
+  (`grep` no match, `diff` differences, …) as a warning instead of an error (default off:
+  upstream error-only classification).
 - `bash.lineDisplay` — selects line-based streaming output (default off: upstream behavior).
 
 Both live in `packages/coding-agent/src/config/settings-schema.ts`. That file is a hotspot
@@ -88,7 +95,13 @@ a file upstream rewrites weekly is more expensive than 170 lines in a file upstr
 | File | Fork Δ | Upstream commits (3 mo) | Risk |
 |---|---|---|---|
 | `packages/coding-agent/CHANGELOG.md` | +20 | 5593 | Medium — appends are cheap, but `bun run release` rewrites sections |
-| `src/config/settings-schema.ts` | +22 | 232 | **High** — high churn, keep the block self-contained |
+| `src/config/settings-schema.ts` | +44 | 266 | **High** — high churn, keep the block self-contained |
+| `src/tools/bash.ts` | +38 / −5 | 76 | **High** — high churn; the fork's delta is one opt-in flag read plus one condition, keep it that way |
+| `src/prompts/system/system-prompt.md` | +1 / −1 | 49 | Medium — a single in-place line, but the prompt is edited often |
+| `src/tools/output-meta.ts` | +22 / −6 | 34 | Medium — the read exception is three lines plus comments |
+| `src/tools/hub/types.ts` | +7 | 17 | Low — one additive optional field |
+| `src/tools/hub/index.ts` | +28 / −2 | 12 | Low |
+| `packages/agent/src/compaction/prompts/compaction-summary.md` | +3 / −1 | 1 | Low |
 | `src/modes/controllers/event-controller.ts` | +1 | 147 | Medium — one line, but the file moves constantly |
 | `src/modes/controllers/command-controller.ts` | +6 / −1 | 76 | **High** — high churn and it deletes an upstream line |
 | `src/cli-commands.ts` | +5 | 14 | Low |
@@ -100,15 +113,33 @@ a file upstream rewrites weekly is more expensive than 170 lines in a file upstr
 Rule of thumb: **volatility × fork delta** is the carrying cost. `settings-schema.ts` and
 `command-controller.ts` are where a careless change hurts most.
 
+### Measured sync conflict set (2026-09-19)
+
+`git merge-tree --write-tree --name-only <tree> upstream/main` — actual conflicts, not estimates:
+
+| Tree | Conflicting files |
+|---|---|
+| `main` as committed | `packages/tui/src/chat/bash-execution.ts` |
+| working tree (`git stash create`) | that, plus `src/tools/bash.ts`, `src/tools/hub/index.ts`, `src/tools/hub/types.ts` |
+
+Every other touched file auto-merges, `settings-schema.ts` (+44) included.
+
+`bash-execution.ts` is the one substantive conflict and it is a **rename conflict**: upstream
+`0d6dbd32fc` moved it out of this package to `packages/tui/src/chat/`. Port the fork's delta onto
+upstream's file; never keep the fork's copy. Per-commit worth and the drop candidates are in
+`docs/local/fork-commit-audit.md`.
+
 ## Zero-conflict inventory (new files)
 
 Carried at no merge cost — new files, or new files inside upstream directories:
 
+- `src/tools/bash-exit-semantics.ts` (the exit-status classifier the `bash.expectedNonZeroExitAsWarning` flag reads)
 - `src/asset-anchors/` (`index.ts`, `drift-check.ts`, `git-hooks.ts`, `init.ts`, `types.ts`)
 - `src/capability/asset.ts`, `src/commands/asset.ts`, `src/discovery/asset-manifest.ts`
 - `packages/coding-agent/scripts/install-omp.sh`
 - `omp.assets.json`, `.omp/mcp.json`
-- `docs/local/project-asset-anchors.md`, `docs/local/fork-divergence.md` (this file)
+- `docs/local/project-asset-anchors.md`, `docs/local/fork-divergence.md` (this file),
+  `docs/local/context-efficiency.md`, `docs/local/fork-commit-audit.md`
 - `test/asset-anchors.test.ts`, `test/asset-capability.test.ts`,
   `test/asset-drift-check.test.ts`, `test/asset-git-hooks.test.ts`, `test/asset-init.test.ts`
 

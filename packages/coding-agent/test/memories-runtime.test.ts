@@ -383,9 +383,10 @@ describe("memories runtime", () => {
 		expect(spy.mock.calls[1]?.[2]?.maxTokens ?? 0).toBeGreaterThan(8192);
 
 		const db = memoryStorage.openMemoryDb(getAgentDbPath(fx.agentDir));
-		const row = db
-			.prepare("SELECT last_error, status FROM jobs WHERE kind = 'memory_consolidate_global'")
-			.get() as { last_error: string; status: string } | null;
+		const row = db.prepare("SELECT last_error, status FROM jobs WHERE kind = 'memory_consolidate_global'").get() as {
+			last_error: string;
+			status: string;
+		} | null;
 		memoryStorage.closeMemoryDb(db);
 		expect(row?.status).toBe("error");
 		expect(row?.last_error).toContain("truncated");

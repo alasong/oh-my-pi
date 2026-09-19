@@ -819,7 +819,10 @@ async function runStage1Job(options: {
 			.join("\n")
 			.trim();
 		if (response.stopReason === "length") {
-			return { kind: "failed", reason: `stage1 output truncated at ${STAGE1_MAX_TOKENS} tokens before emitting JSON` };
+			return {
+				kind: "failed",
+				reason: `stage1 output truncated at ${STAGE1_MAX_TOKENS} tokens before emitting JSON`,
+			};
 		}
 		if (!text) {
 			return { kind: "failed", reason: `stage1 returned no text (stop_reason=${response.stopReason})` };

@@ -64,6 +64,7 @@ import {
 	messagingRenderResult,
 } from "./messaging";
 import {
+	type CoordinationDetails,
 	DEFAULT_HUB_LIST_LIMIT,
 	type HubDetails,
 	type HubRenderArgs,
@@ -160,6 +161,23 @@ function hubApproval(params: unknown): ToolApprovalDecision {
 			// start / stop / restart and anything unrecognized.
 			return "exec";
 	}
+}
+
+const NO_EVENT_HINT =
+	"Wait window expired with no event: no job settled and no message arrived. This is not progress — do not re-issue wait immediately. Wait longer or do other work.";
+
+/**
+ * Mark a wait result whose window expired with nothing happening, so a bare
+ * timeout is never mistaken for (and re-polled as) a progress update.
+ */
+function markNoEventResult(result: AgentToolResult<CoordinationDetails>): AgentToolResult<CoordinationDetails> {
+	return {
+		...result,
+		content: result.content.map(part =>
+			part.type === "text" ? { ...part, text: `${part.text}\n\n${NO_EVENT_HINT}` } : part,
+		),
+		details: { ...result.details, op: result.details?.op ?? "wait", noEvent: true },
+	};
 }
 
 export class HubTool implements AgentTool<typeof hubSchema, HubDetails> {
@@ -463,7 +481,11 @@ export class HubTool implements AgentTool<typeof hubSchema, HubDetails> {
 		}
 
 		const { promise: timeoutPromise, resolve: timeoutResolve } = Promise.withResolvers<void>();
-		const timeoutHandle = setTimeout(() => timeoutResolve(), nextWindowMs());
+		let windowExpired = false;
+		const timeoutHandle = setTimeout(() => {
+			windowExpired = true;
+			timeoutResolve();
+		}, nextWindowMs());
 		racePromises.push(timeoutPromise);
 
 		const watchedJobIds = runningJobs.map(job => job.id);
@@ -512,7 +534,13 @@ export class HubTool implements AgentTool<typeof hubSchema, HubDetails> {
 			if (settled.message) return messageResult(messaging.senderId, settled.message);
 		}
 
-		return buildJobResult(this.session, manager, "wait", jobsToWatch, []);
+		const snapshot = buildJobResult(this.session, manager, "wait", jobsToWatch, []);
+		// Only a window expiry with every watched job still running is a bare
+		// timeout; any other race winner produced a real event, so its result
+		// stays byte-identical to before.
+		return windowExpired && runningJobs.every(job => job.status === "running")
+			? markNoEventResult(snapshot)
+			: snapshot;
 	}
 }
 

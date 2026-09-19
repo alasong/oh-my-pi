@@ -773,8 +773,10 @@ export function resolveOutputMaxColumns(s: Settings | undefined): number {
  * If the tool result text exceeds the spill threshold, save the full output
  * as a session artifact and replace the content with a head+tail (middle
  * elision) view plus an artifact reference. When `tools.artifactHeadBytes`
- * is 0, falls back to tail-only truncation. Skips when the tool already
- * saved its own artifact (e.g. bash/python via OutputSink).
+ * is 0, falls back to tail-only truncation. A tool that already saved its own
+ * artifact (e.g. bash/python via OutputSink) is skipped; `read` is the
+ * exception — its artifact pointer is reused while the inline body is still
+ * bounded to the configured budget.
  */
 async function spillLargeResultToArtifact(
 	result: AgentToolResult,
@@ -785,9 +787,21 @@ async function spillLargeResultToArtifact(
 	if (!sessionManager) return result;
 	const { threshold, tailBytes, tailLines, headBytes } = getSpillConfig(context?.settings);
 
-	// Skip if tool already saved an artifact
+	// A tool that already saved its own artifact — bash/python via OutputSink,
+	// the fetch tool — has its inline body bounded by that path already
+	// (`enforceInlineByteCap`/the sink spill threshold). Leave it alone: the
+	// generic spill's only remaining job there would be to re-save an artifact,
+	// exactly the duplicate-artifact churn (`Artifact: N+1` vs `artifact://N`)
+	// this guard avoids.
+	//
+	// `read` is the exception. Its artifact-carrying paths (an oversized URL
+	// body) bypass the sink, so the tool can still inline up to the read byte
+	// cap. Such a result must honor the user's spill budget too — the tool's
+	// existing artifact pointer is reused (never re-saved) while the inline
+	// body is re-truncated to head/tail below.
 	const existingMeta: OutputMeta | undefined = result.details?.meta;
-	if (existingMeta?.truncation?.artifactId) return result;
+	const existingArtifactId = existingMeta?.truncation?.artifactId;
+	if (existingArtifactId && toolName !== "read") return result;
 
 	// Reading an artifact already addresses recoverable full output. Spilling that
 	// read would only create a redundant artifact containing another artifact's
@@ -820,10 +834,12 @@ async function spillLargeResultToArtifact(
 	// error, nor re-expose the full (possibly context-blowing) output. Mirror
 	// `enforceInlineByteCap`: always truncate past the threshold, and only
 	// attach the `artifact://` recovery link when the save actually succeeded.
-	let artifactId: string | undefined;
+	// Reuse the tool's own artifact when it already saved one; only tools
+	// without a recovery pointer need a fresh save.
+	let artifactId: string | undefined = existingArtifactId;
 	// A failed stream capture only left a preview here. Saving that preview
 	// would invent a misleading full-output recovery link, not recover the log.
-	if (!existingMeta?.artifactError) {
+	if (!existingArtifactId && !existingMeta?.artifactError) {
 		try {
 			artifactId = await sessionManager.saveArtifact(fullText, toolName);
 		} catch (error) {

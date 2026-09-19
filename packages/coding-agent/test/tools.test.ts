@@ -12,7 +12,7 @@ import { EditTool } from "@oh-my-pi/pi-coding-agent/edit";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
 import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
 import { BashTool } from "@oh-my-pi/pi-coding-agent/tools/bash";
-import { wrapToolWithMetaNotice } from "@oh-my-pi/pi-coding-agent/tools/output-meta";
+import { postProcessToolResult, wrapToolWithMetaNotice } from "@oh-my-pi/pi-coding-agent/tools/output-meta";
 import { ReadTool } from "@oh-my-pi/pi-coding-agent/tools/read";
 import * as toolTimeouts from "@oh-my-pi/pi-coding-agent/tools/tool-timeouts";
 import { WriteTool } from "@oh-my-pi/pi-coding-agent/tools/write";
@@ -1064,6 +1064,47 @@ describe("Coding Agent Tools", () => {
 			} finally {
 				await spillManager.close();
 			}
+		});
+
+		it("bounds an artifact-carrying read result to the inline budget without re-saving", async () => {
+			// `read` can spill its own output (an oversized URL body) and hand the
+			// result a truncation artifactId. That must not exempt the result from
+			// the user's inline budget: the body is re-truncated while the tool's
+			// artifact pointer is reused instead of saving a duplicate.
+			const spillSettings = Settings.isolated({
+				"tools.artifactSpillThreshold": 10,
+				"tools.artifactTailBytes": 2,
+				"tools.artifactTailLines": 20,
+				"tools.artifactHeadBytes": 0,
+			});
+			const manager = SessionManager.inMemory();
+			const saveArtifact = vi.spyOn(manager, "saveArtifact");
+			const body = `${Array.from({ length: 12 }, () => "z".repeat(6000)).join("\n")}\n`;
+			const result = {
+				content: [{ type: "text" as const, text: body }],
+				details: {
+					meta: {
+						truncation: {
+							direction: "head" as const,
+							truncatedBy: "bytes" as const,
+							totalLines: 13,
+							totalBytes: Buffer.byteLength(body, "utf-8"),
+							outputLines: 12,
+							outputBytes: Buffer.byteLength(body, "utf-8"),
+							artifactId: "77",
+						},
+					},
+				},
+			};
+			const context = { sessionManager: manager, settings: spillSettings } as unknown as AgentToolContext;
+
+			const processed = await postProcessToolResult(result, "read", context);
+			const output = getTextOutput(processed);
+
+			expect(Buffer.byteLength(output, "utf-8")).toBeLessThan(10 * 1024);
+			expect(output).toContain("artifact://77");
+			expect(processed.details?.meta?.truncation?.artifactId).toBe("77");
+			expect(saveArtifact).not.toHaveBeenCalled();
 		});
 
 		it("should strip payloads duplicated by structured MCP blocks (#9687)", async () => {

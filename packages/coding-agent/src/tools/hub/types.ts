@@ -133,6 +133,13 @@ export interface CoordinationDetails {
 	receipts?: IrcDeliveryReceipt[];
 	/** Message consumed by `wait` / `send await:true`; null when the wait timed out. */
 	waited?: IrcMessage | null;
+	/**
+	 * Present on `op:"wait"` when the wait window expired with no event at
+	 * all (no job settled, no message arrived). The snapshot is then
+	 * indistinguishable from a real progress update unless flagged, so the
+	 * model can tell a timeout from new state.
+	 */
+	noEvent?: true;
 	inbox?: IrcMessage[];
 	peers?: HubPeerInfo[];
 	/** Present on `op:"list"`: addressable running/idle/parked plus page size. */

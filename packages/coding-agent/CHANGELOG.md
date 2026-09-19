@@ -3,6 +3,16 @@
 ## [Unreleased]
 
 本地 fork 改动简要说明（中文）：`docs/local/CHANGELOG.zh.md`。
+
+### Added (fork-local)
+
+- `bash.expectedNonZeroExitAsWarning` (default false — upstream behavior unchanged): when enabled, report a command whose non-zero exit is its normal negative answer (`grep` with no matches, `diff` differences, a false `test`, ...) as a warning instead of an error, keeping the exit code visible. Only unambiguous single commands are recognized (`&&` lists, redirections, and wrappers such as `bash -c` stay errors). Enable with `bash.expectedNonZeroExitAsWarning: true` in `~/.omp/agent/config.yml` or via the settings panel.
+- `hub wait` now flags a window expiry that produced no event at all (`details.noEvent`, plus a one-line hint in the result text): an empty poll is no longer indistinguishable from a real progress update, so it cannot be re-issued as if something happened. A wait won by a settled job or by an inbound message is byte-identical to before.
+- The system prompt's parallelism guidance now says to batch independent calls into ONE assistant turn — with examples and the reason (each extra turn re-pays the whole context) — replacing the vague "SHOULD parallelize independent calls".
+
+### Fixed (fork-local)
+
+- Fixed an oversized `read` result escaping the configured inline budget: a result that already carried its own artifact was skipped wholesale by the spill path, so `tools.artifactSpillThreshold`/`tools.artifactHeadBytes` never applied to it (a large URL body could inline tens of KB into one tool result). Such a result is now bounded to the same head/tail budget and reuses its existing artifact pointer instead of saving a second one.
 ## [18.2.3] - 2026-09-17
 
 ### Breaking Changes
