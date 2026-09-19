@@ -55,13 +55,14 @@ fork 的最大成本是 **upstream sync 冲突**（`docs/local/fork-divergence.m
 
 | 窗口 | 起-止（sync 基点） | 选入条目 | 实现结果 | 冲突成本实况 | 复盘残差 |
 |---|---|---|---|---|---|
-| （待迭代 0 试跑后回填） | — | — | — | — | — |
+| 迭代 0（机制试跑） | 2026-09-19，@ `main` | 机制文档本身（本文件） | 落地 `docs/local/iteration-plan.md`（6 节） | 低（纯新增文档，无上游冲突） | ①9-18/9-19 散点需回登台账 ②`evidence_path_absent` 在并行 merge 的脏工作区误杀（1590 个暂存改动含已删文件） → 待评估要不要给 kaa 门加「忽略已删除路径」豁免 |
 
 ## Backlog（候选，未承诺）
 
 | 动机 | 落点层级 | 验证方式 | sync 冲突成本 | 状态 |
 |---|---|---|---|---|
-| （迭代 0 从 9-18/9-19 散点回登：见 git log 9 commits） | — | — | — | 待评估 |
+| 9-18/9-19 散点 commit 逐条回登（9 个：asset-anchors / bash 输出折叠 / memory 截断通报 / 裸 !cd / clipboard 并发 / bash exit semantics / hub 空轮询标记 / read budget / compaction rationale） | 逐一落点定级 | 各条对应的测试命令（asset-anchors.test / bash-*.test 等） | 中（多数已在 sync 中回归验证，仅 `bash-execution.ts` 有改名冲突） | 待评估 |
+| fork-commit-audit 判为「不保留」的散点（如 collapsedPreviewLines 实现已并入 upstream） | — | — | — | 已裁决：不重做 |
 
-> 迭代 0 的首个动作：把 9-18~9-19 的 9 个散点 commit 按本台账四列逐条回登，
-> 已实现的标「已落地 + commit」，未闭环的（如记忆截断的通报、hub 空轮询标记）标「待补验证」。
+> 迭代 1：把上面 9 个散点按台账四列逐条回登，已实现的标「已落地 + commit」，
+> 未闭环的（如记忆截断的通报、hub 空轮询标记）标「待补验证」。

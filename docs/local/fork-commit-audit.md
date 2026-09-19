@@ -4,6 +4,10 @@ What the fork's own commits are worth, what is not worth keeping, and what the n
 sync will actually cost. Basis: fork `main` = upstream `a2d83061c5` + **6 commits**, which is
 **59 commits behind** `upstream/main` (`v18.2.3-59-ge1a86ce4f9`, package `18.2.5`).
 
+SHAs below are from the pre-rewrite history. The 2026-09-18 remote rewrite re-titled the same
+five commits with new SHAs: `0c9202d51b`→`89ae49feca`, `ae9c2b6b13`→`a48d0037b7`,
+`7d33af040c`→`2b04945811`, `ad0352ce08`→`48942e8cfb`, `1ab14e9b60`→`0eb58c2a92`.
+
 Companion to `fork-divergence.md` (placement policy + hotspot inventory). This file is the
 per-commit verdict; that file is the rule for where a change may live.
 
@@ -16,10 +20,10 @@ per-commit verdict; that file is the rule for where a change may live.
 | `7d33af040c` `bash.cdFollowsShell` | **keep** | Upstream's `bash.*` keys are only `enabled`, `allowCompoundCommands`, `autoBackground.*`, `patterns`, `direnv*`. Level-2 setting gate (default `false` = upstream behavior); auto-merges. |
 | `ad0352ce08` memory consolidation truncation | **keep** | Upstream never fixed it: `memories/index.ts:794` still hardcodes `Math.min(4096, …)`, `:937` still `8192`, and the file has no `stopReason === "length"` branch. Fork-only fix, one file, auto-merges. |
 | `ae9c2b6b13` `bash.lineDisplay` | **keep** | Real increment: `upstream/main`'s `streaming-reveal.ts` has no line-reveal mode (grep for `line\|Line\|LINES` → zero hits). Optional `getLineDisplay` injection keeps upstream construction paths intact. |
-| `ae9c2b6b13` `bash.collapsedPreviewLines` | **downgrade** | See below — the collapse behavior is upstream's. |
-| `fb9eaa14ce` default collapse 3 lines | **folded into the above** | The `STREAMING_LINE_CAP` decoupling is the load-bearing part (keeps the streaming memory cap at 100 regardless of the preview setting). |
-| `fb9eaa14ce` `docs/local/dev-checklist.md` | **keep** | New doc, zero conflict. |
-| working tree: 6 items (uncommitted) | **keep, commit** | Upstream has no counterpart for any of them. |
+| `ae9c2b6b13` `bash.collapsedPreviewLines` | **dropped** | Removed by the 2026-09-18 remote rewrite; the fork no longer carries it. |
+| `fb9eaa14ce` default collapse 3 lines | **dropped** | Went with the setting; `PREVIEW_LINES` / `STREAMING_LINE_CAP` stay at upstream's 20 / 100. |
+| `fb9eaa14ce` `docs/local/dev-checklist.md` | **dropped** | Removed in the same rewrite; not re-applied. |
+| working tree: 6 items (uncommitted) | **keep, commit** | Upstream has no counterpart for any of them. Committed as `fb1e6eac81`, replayed onto the rewritten remote as `56fb4ff74e`. |
 
 ## Not worth keeping
 
@@ -35,6 +39,19 @@ resolution every sync, and its benefit is a personal default.
 If the 3-line default is genuinely wanted, re-apply it onto upstream's
 `packages/tui/src/chat/bash-execution.ts` after the sync — do not carry a patch anchored to the
 old path.
+
+**Outcome (2026-09-19 sync, merge `e6aee161c7`).** The prediction was right about the cost and
+wrong about the disposition: the fork did not keep even the *setting*. The 2026-09-18 rewrite of
+`alasong/main` had already removed `bash.collapsedPreviewLines` and the 3-line default — i.e. it
+implemented this audit's verdict. Instead of re-porting the feature onto the preference seam
+(the plan while local history still carried it), the sync was rebased onto the rewritten remote
+and the removal accepted; see "Fork remote history was rewritten once" in `fork-divergence.md`.
+
+What survives is `bash.lineDisplay` alone, routed through the host-pushed preference seam
+(level 2b) because upstream moved the component into `pi-tui`, which cannot read settings.
+`PREVIEW_LINES` and `STREAMING_LINE_CAP` are back to upstream's 20 / 100, so the
+`STREAMING_LINE_CAP` decoupling is **gone, not carried**: at `PREVIEW_LINES = 20` the cap is
+still 100, and the behavior it defended survives in upstream's own constant.
 
 **2. Nothing else.** An earlier pass of this audit proposed dropping
 `packages/coding-agent/scripts/install-omp.sh` on the grounds that no code references it. That
@@ -62,10 +79,19 @@ Everything else auto-merges — including `settings-schema.ts` (+44), `cli-comma
 `packages/coding-agent/src/modes/components/` to `packages/tui/src/chat/`. Resolve by
 re-applying the fork's delta onto upstream's file; never by keeping the fork's copy.
 
+**Actual (2026-09-19).** The prediction held exactly: four conflicting files, everything else
+auto-merged. The two conflicts the `main`-as-committed column missed were the fork's then-
+uncommitted items — commit the tree before merging, as step 1 below says.
+
 ## Order of work
 
-1. Commit the working tree's 6 items.
-2. Sync upstream 59 commits (SOP in `fork-divergence.md`).
-3. Resolve `bash-execution.ts` by porting `lineDisplay` + the `STREAMING_LINE_CAP` decoupling;
-   decide on the 3-line default there.
-4. `git push alasong main`.
+All steps completed on 2026-09-19 (merge `e6aee161c7`):
+
+1. ~~Commit the working tree's 6 items.~~ Done — `fb1e6eac81`, replayed onto the rewritten
+   remote as `56fb4ff74e`.
+2. ~~Sync upstream (SOP in `fork-divergence.md`).~~ Done — 73 commits, 4 conflicts.
+3. ~~Resolve `bash-execution.ts` by porting `lineDisplay` + the `STREAMING_LINE_CAP`
+   decoupling.~~ Done — `lineDisplay` ported through the preference seam; the decoupling is no
+   longer needed (see the outcome note above).
+4. `git push alasong main` — needed a rebase onto the rewritten `alasong/main` first, because
+   local history and the remote shared no tip (see `fork-divergence.md`).
