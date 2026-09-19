@@ -5,6 +5,11 @@
 ### Changed (fork-local)
 
 - The compaction summary prompt now requires each key decision to keep the rationale it was made with — quoting the original sentence verbatim when the rationale was stated in the conversation — and explicitly forbids flattening a decision into a general statement. A compaction previously kept the decision but dropped why it had been chosen.
+## [18.2.5] - 2026-09-17
+
+### Fixed
+
+- Improved agent performance by reducing redundant tool-schema processing during repeated model calls and optimizing streamed tool-call argument parsing.
 
 ## [18.2.1] - 2026-09-15
 
